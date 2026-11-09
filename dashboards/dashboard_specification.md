@@ -18,6 +18,7 @@ Tất cả nguồn là bảng BigQuery trong `ev_charging_mart`. Các bảng đ�
 | Năng lượng | executive/station/hourly | Tổng `total_elec_kwh` từ nguồn |
 | Tổng phí | executive/station | Tổng tiền điện và phí dịch vụ |
 | Thời lượng trung bình | executive/station/hourly | Trung bình `duration_min` từ nguồn |
+| Tỷ lệ giao dịch theo giờ | hourly | `pct_of_month_transactions`: giao dịch trong giờ chia tổng giao dịch của tháng |
 | Idle duration | CORE-derived | Connection duration trừ active charge duration ước tính |
 
 ## Visual QA

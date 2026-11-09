@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_hourly_demand (
   total_energy_kwh            FLOAT64   OPTIONS (description = 'Total energy consumed in sessions starting this hour'),
   avg_duration_min            FLOAT64   OPTIONS (description = 'Average session duration in minutes'),
   avg_fee_cny                 FLOAT64   OPTIONS (description = 'Average total fee per session in CNY'),
-  pct_of_daily_transactions   FLOAT64   OPTIONS (description = 'Percentage of daily transactions occurring in this hour'),
+  pct_of_month_transactions   FLOAT64   OPTIONS (description = 'Percentage of monthly transactions occurring in this hour'),
 
   -- Audit
   _computed_at                TIMESTAMP NOT NULL OPTIONS (description = 'Timestamp when metrics were computed')
@@ -154,7 +154,7 @@ OPTIONS (
 CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_cost_analysis (
   -- Dimensions
   construction_site_en        STRING    NOT NULL OPTIONS (description = 'English site type'),
-  equipment_classification    STRING    NOT NULL OPTIONS (description = 'Equipment type: 直流设备 (DC) or 交流设备 (AC)'),
+  equipment_classification    STRING    OPTIONS (description = 'Equipment type: 直流设备 (DC) or 交流设备 (AC); nullable when the source classification is missing'),
   source_month                STRING    NOT NULL OPTIONS (description = 'Month identifier'),
 
   -- Volume context

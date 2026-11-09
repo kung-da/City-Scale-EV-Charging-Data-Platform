@@ -72,14 +72,14 @@ WITH source AS (
     transaction_date, equipment_classification, rated_gun_power_kw, station_id,
     pile_id, duration_min, charge_start_time, charge_end_time, total_elec_kwh,
     total_elec_fee, total_service_fee, total_fee,
-    '2025-01' AS source_month, 'orders_2025-01_public.parquet' AS _source_file
+    _source_month AS source_month, _source_file
   FROM ev_charging_raw.raw_orders_2025_01
   UNION ALL
   SELECT
     transaction_date, equipment_classification, rated_gun_power_kw, station_id,
     pile_id, duration_min, charge_start_time, charge_end_time, total_elec_kwh,
     total_elec_fee, total_service_fee, total_fee,
-    '2025-07' AS source_month, 'orders_2025-07_public.parquet' AS _source_file
+    _source_month AS source_month, _source_file
   FROM ev_charging_raw.raw_orders_2025_07
 ),
 hashed AS (
@@ -121,6 +121,8 @@ SELECT
   CASE
     WHEN duplicate_rank > 1 THEN 'exact_duplicate'
     WHEN station_id IS NULL THEN 'missing_station_id'
+    WHEN charge_start_time IS NULL THEN 'missing_start_time'
+    WHEN charge_end_time IS NULL THEN 'missing_end_time'
     WHEN charge_end_time < charge_start_time THEN 'end_before_start'
     WHEN duration_min < 0 OR total_elec_kwh < 0 OR total_elec_fee < 0
       OR total_service_fee < 0 OR total_fee < 0 THEN 'negative_measure'
@@ -128,3 +130,22 @@ SELECT
   END AS validation_notes,
   run_ts AS _ingested_at, _source_file
 FROM ranked;
+
+CREATE OR REPLACE TABLE ev_charging_staging.stg_rejected_records
+PARTITION BY transaction_date AS
+SELECT
+  transaction_date, source_month, station_id, pile_id,
+  charge_start_time, charge_end_time, source_row_hash,
+  equipment_classification, rated_gun_power_kw, duration_min,
+  total_elec_kwh, total_elec_fee, total_service_fee, total_fee,
+  CASE
+    WHEN is_exact_duplicate THEN 'exact_duplicate'
+    WHEN is_zero_consumption THEN 'zero_consumption'
+    WHEN validation_notes IS NOT NULL THEN validation_notes
+    ELSE 'invalid_record'
+  END AS rejection_reason,
+  is_zero_consumption,
+  run_ts AS _rejected_at,
+  _source_file
+FROM ev_charging_staging.stg_orders
+WHERE NOT is_valid OR is_zero_consumption OR is_exact_duplicate;

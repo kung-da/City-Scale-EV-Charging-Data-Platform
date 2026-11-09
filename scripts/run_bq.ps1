@@ -4,12 +4,25 @@ param(
 
     [string] $ProjectId = $env:EV_PROJECT_ID,
     [string] $Location = $(if ($env:EV_BQ_LOCATION) { $env:EV_BQ_LOCATION } else { "us-central1" }),
-    [string] $MaximumBytesBilled = "500GB"
+    [string] $MaximumBytesBilled = "10GB"
 )
 
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path -LiteralPath $SqlFile -PathType Leaf)) {
     throw "SQL file not found: $SqlFile"
+}
+
+if ($MaximumBytesBilled -match '^(?<value>\d+)(?<unit>KB|MB|GB|TB)?$') {
+    $multiplier = switch ($Matches.unit) {
+        "KB" { 1KB }
+        "MB" { 1MB }
+        "GB" { 1GB }
+        "TB" { 1TB }
+        default { 1 }
+    }
+    $MaximumBytesBilled = [string]([int64]$Matches.value * $multiplier)
+} else {
+    throw "MaximumBytesBilled must be an integer byte count or a value such as 10GB."
 }
 
 $bq = Get-Command bq.cmd -ErrorAction SilentlyContinue

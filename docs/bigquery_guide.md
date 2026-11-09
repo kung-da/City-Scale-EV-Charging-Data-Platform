@@ -80,10 +80,12 @@ gcloud storage du -s gs://$env:EV_GCS_BUCKET
 
 Theo dõi tham khảo: 10 GiB BigQuery storage, 1 TiB BigQuery query processing và 5 GB-tháng Regional Standard Cloud Storage tại `us-central1`. BigQuery Sandbox có thể không cần billing account nhưng có giới hạn vòng đời; dùng GCS có thể vẫn yêu cầu billing. Đây không phải cam kết `$0`; xác nhận bằng Billing Reports và điều kiện tài khoản thực tế.
 
+Để thêm lớp bảo vệ theo ngày, vào Google Cloud Console → IAM & Admin → Quotas, lọc BigQuery và cấu hình custom `Query usage per day`. Quota này khác với giới hạn 1 TiB/tháng, khác với `--maximum_bytes_billed` của từng job và chỉ áp dụng theo chính sách pricing/quota hiện hành.
+
 ## 7. Ước tính chi phí
 
 ```powershell
 bq query --use_legacy_sql=false --dry_run --format=prettyjson "SELECT COUNT(*) FROM \`YOUR_PROJECT.ev_charging_core.fact_charging_transaction\` WHERE transaction_date BETWEEN '2025-01-01' AND '2025-01-31'"
 ```
 
-Luôn lọc `transaction_date` khi đọc bảng partitioned. Tránh `SELECT *`, xem bytes processed trong dry run và để Looker Studio đọc MART thay vì fact table. `scripts/run_bq.ps1` áp dụng `--maximum_bytes_billed=500GB` cho mỗi job; giới hạn này không thay thế monthly budget alert.
+Luôn lọc `transaction_date` khi đọc bảng partitioned. Tránh `SELECT *`, xem bytes processed trong dry run và để Looker Studio đọc MART thay vì fact table. `scripts/run_bq.ps1` áp dụng `--maximum_bytes_billed=10GB` cho mỗi job; giới hạn này không thay thế monthly budget alert.

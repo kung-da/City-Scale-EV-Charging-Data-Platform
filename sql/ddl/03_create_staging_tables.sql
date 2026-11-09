@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS ev_charging_staging.stg_orders (
   total_fee                   FLOAT64   OPTIONS (description = 'Total fee (elec + service) in CNY'),
 
   -- Quality flags
-  is_valid                    BOOL      NOT NULL OPTIONS (description = 'TRUE if record passes all validation checks and is non-zero consumption'),
+  is_valid                    BOOL      NOT NULL OPTIONS (description = 'TRUE if record passes structural and measure validation; zero consumption is flagged separately'),
   is_zero_consumption         BOOL      NOT NULL OPTIONS (description = 'TRUE if total_elec_kwh = 0 or IS NULL'),
   is_imputed_classification   BOOL      NOT NULL OPTIONS (description = 'TRUE only if a documented lookup supports imputation; FALSE for current source'),
   is_exact_duplicate          BOOL      NOT NULL OPTIONS (description = 'TRUE for an exact duplicate occurrence after the canonical source row'),

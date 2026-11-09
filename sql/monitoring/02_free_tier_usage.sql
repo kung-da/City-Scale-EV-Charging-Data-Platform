@@ -5,10 +5,10 @@ DECLARE free_query_tib NUMERIC DEFAULT 1;
 
 SELECT
   'bigquery_storage' AS metric,
-  ROUND(SUM(total_logical_bytes) / POW(1024, 3), 3) AS used_gib,
+  ROUND(COALESCE(SUM(total_logical_bytes), 0) / POW(1024, 3), 3) AS used_gib,
   free_storage_gib AS free_tier_limit,
-  ROUND(SUM(total_logical_bytes) / POW(1024, 3) / free_storage_gib * 100, 2) AS used_percent,
-  IF(SUM(total_logical_bytes) <= free_storage_gib * POW(1024, 3), 'WITHIN_LIMIT', 'REVIEW') AS status
+  ROUND(COALESCE(SUM(total_logical_bytes), 0) / POW(1024, 3) / free_storage_gib * 100, 2) AS used_percent,
+  IF(COALESCE(SUM(total_logical_bytes), 0) <= free_storage_gib * POW(1024, 3), 'WITHIN_LIMIT', 'REVIEW') AS status
 FROM `region-us-central1`.INFORMATION_SCHEMA.TABLE_STORAGE_BY_PROJECT
 WHERE table_schema IN (
   'ev_charging_raw',
@@ -22,10 +22,10 @@ UNION ALL
 
 SELECT
   'bigquery_query_current_month',
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4), 3),
+  ROUND(COALESCE(SUM(total_bytes_processed), 0) / POW(1024, 4), 3),
   free_query_tib,
-  ROUND(SUM(total_bytes_processed) / POW(1024, 4) / free_query_tib * 100, 2),
-  IF(SUM(total_bytes_processed) <= free_query_tib * POW(1024, 4), 'WITHIN_LIMIT', 'REVIEW')
+  ROUND(COALESCE(SUM(total_bytes_processed), 0) / POW(1024, 4) / free_query_tib * 100, 2),
+  IF(COALESCE(SUM(total_bytes_processed), 0) <= free_query_tib * POW(1024, 4), 'WITHIN_LIMIT', 'REVIEW')
 FROM `region-us-central1`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE creation_time >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH)
   AND state = 'DONE'

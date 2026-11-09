@@ -25,7 +25,7 @@ Dùng scorecard cho số giao dịch, năng lượng, tổng phí, thời lượ
 
 ### Nhu cầu sạc
 
-Dùng `mart_hourly_demand` để xem giao dịch và năng lượng theo giờ. Thêm bộ lọc `source_month`, `time_period` và `tou_category`. Chỉ dùng phần trăm theo đúng mẫu số được ghi trong data dictionary.
+Dùng `mart_hourly_demand` để xem giao dịch và năng lượng theo giờ. Thêm bộ lọc `source_month`, `time_period` và `tou_category`. `pct_of_month_transactions` là tỷ lệ trên tổng giao dịch của tháng, không phải tỷ lệ theo ngày.
 
 ### Hạ tầng
 

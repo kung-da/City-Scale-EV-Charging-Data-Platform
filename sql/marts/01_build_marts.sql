@@ -27,13 +27,35 @@ SELECT
   t.time_period, t.tou_category, COUNT(*) AS transaction_count,
   AVG(f.total_elec_kwh) AS avg_energy_kwh, SUM(f.total_elec_kwh) AS total_energy_kwh,
   AVG(f.duration_min) AS avg_duration_min, AVG(f.total_fee) AS avg_fee_cny,
-  SAFE_DIVIDE(COUNT(*), SUM(COUNT(*)) OVER (PARTITION BY f.source_month)) AS pct_of_daily_transactions,
+  SAFE_DIVIDE(COUNT(*), SUM(COUNT(*)) OVER (PARTITION BY f.source_month)) AS pct_of_month_transactions,
   run_ts AS _computed_at
 FROM ev_charging_core.fact_charging_transaction AS f
 JOIN ev_charging_core.dim_time AS t
   ON t.hour = EXTRACT(HOUR FROM f.charge_start_time)
  AND t.minute = 0
 GROUP BY f.source_month, hour_of_day, t.time_period, t.tou_category;
+
+CREATE OR REPLACE TABLE ev_charging_mart.mart_cost_analysis AS
+SELECT
+  s.construction_site_en,
+  f.equipment_classification,
+  f.source_month,
+  COUNT(*) AS transaction_count,
+  SUM(f.total_elec_kwh) AS total_energy_kwh,
+  SUM(f.total_elec_fee) AS total_elec_fee_cny,
+  SUM(f.total_service_fee) AS total_service_fee_cny,
+  SUM(f.total_fee) AS total_fee_cny,
+  AVG(f.total_elec_fee) AS avg_elec_fee_per_session,
+  AVG(f.total_service_fee) AS avg_service_fee_per_session,
+  AVG(f.total_fee) AS avg_total_fee_per_session,
+  SAFE_DIVIDE(SUM(f.total_elec_fee), SUM(f.total_elec_kwh)) AS avg_elec_fee_per_kwh,
+  SAFE_DIVIDE(SUM(f.total_service_fee), SUM(f.total_elec_kwh)) AS avg_service_fee_per_kwh,
+  SAFE_DIVIDE(SUM(f.total_fee), SUM(f.total_elec_kwh)) AS avg_total_fee_per_kwh,
+  SAFE_DIVIDE(SUM(f.total_service_fee), SUM(f.total_fee)) AS service_fee_pct,
+  run_ts AS _computed_at
+FROM ev_charging_core.fact_charging_transaction AS f
+JOIN ev_charging_core.dim_station AS s USING (station_id)
+GROUP BY s.construction_site_en, f.equipment_classification, f.source_month;
 
 CREATE OR REPLACE TABLE ev_charging_mart.mart_station_utilization AS
 SELECT

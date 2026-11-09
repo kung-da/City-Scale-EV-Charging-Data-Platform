@@ -24,6 +24,7 @@ Các bảng MART dùng để kết nối Looker Studio:
 - `mart_hourly_demand`
 - `mart_station_utilization`
 - `mart_spatial_grid_summary`
+- `mart_cost_analysis`
 
 ## 2. Dữ liệu nguồn
 
@@ -189,43 +190,15 @@ bq load --project_id=$project --location=$location --replace --autodetect --sour
   "gs://${bucket}/raw/orders_2025-07_public.parquet"
 ```
 
-### 8.2. Insert vào bảng RAW chính
+### 8.2. Publish vào bảng RAW chính
 
-Chạy từng câu lệnh sau bằng BigQuery Console hoặc lưu thành file tạm `.sql` rồi pipe qua `bq query`. Thay `YOUR_PROJECT_ID` nếu chưa set project mặc định.
+Chạy script publish để thay thế từng bảng RAW từ bảng tạm một cách nhất quán. Script dùng `CREATE OR REPLACE TABLE`, nên rerun không append duplicate; chỉ chạy sau khi cả ba bảng tạm đã load thành công:
 
-```sql
-INSERT INTO `YOUR_PROJECT_ID.ev_charging_raw.raw_stations`
-SELECT
-  geocoding, station_id, construction_site,
-  station_total_power_kw, piles_num, dc_piles_num, ac_piles_num,
-  charging_gun_num, dc_charging_gun_num, ac_charging_gun_num,
-  CURRENT_TIMESTAMP(), 'stations_public.parquet'
-FROM `YOUR_PROJECT_ID.ev_charging_raw._load_stations`;
-
-INSERT INTO `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_01`
-SELECT
-  transaction_date, equipment_classification, rated_gun_power_kw,
-  station_id, pile_id, duration_min, charge_start_time, charge_end_time,
-  total_elec_kwh, total_elec_fee, total_service_fee, total_fee,
-  CURRENT_TIMESTAMP(), 'orders_2025-01_public.parquet', '2025-01'
-FROM `YOUR_PROJECT_ID.ev_charging_raw._load_orders_2025_01`;
-
-INSERT INTO `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_07`
-SELECT
-  transaction_date, equipment_classification, rated_gun_power_kw,
-  station_id, pile_id, duration_min, charge_start_time, charge_end_time,
-  total_elec_kwh, total_elec_fee, total_service_fee, total_fee,
-  CURRENT_TIMESTAMP(), 'orders_2025-07_public.parquet', '2025-07'
-FROM `YOUR_PROJECT_ID.ev_charging_raw._load_orders_2025_07`;
+```powershell
+.\scripts\run_bq.ps1 -SqlFile sql\ingestion\01_publish_raw.sql
 ```
 
-Nếu chạy lại từ đầu, dùng `TRUNCATE TABLE` cho ba bảng RAW chính trước khi insert để tránh nhân đôi dữ liệu:
-
-```sql
-TRUNCATE TABLE `YOUR_PROJECT_ID.ev_charging_raw.raw_stations`;
-TRUNCATE TABLE `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_01`;
-TRUNCATE TABLE `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_07`;
-```
+Nếu script publish fail, bảng RAW cũ vẫn được giữ cho tới statement tương ứng; không chạy STAGING khi chưa kiểm tra đủ ba source file.
 
 Kiểm tra RAW:
 
@@ -256,7 +229,7 @@ Chạy lần lượt RAW → STAGING → CORE → MART → MONITORING:
 .\scripts\run_bq.ps1 -SqlFile sql\monitoring\01_run_dq_checks.sql
 ```
 
-`scripts/run_bq.ps1` đặt location và `--maximum_bytes_billed=500GB` cho mỗi query. Đây là giới hạn từng job, không phải giới hạn tổng usage theo tháng.
+`scripts/run_bq.ps1` đặt location và `--maximum_bytes_billed=10GB` cho mỗi query. Đây là giới hạn từng job, không phải giới hạn tổng usage theo tháng; có thể tăng có chủ đích bằng `-MaximumBytesBilled`.
 
 ## 10. Kiểm tra sau pipeline
 
@@ -328,6 +301,7 @@ Nguyên tắc:
 - Chỉ rebuild STAGING/CORE/MART khi RAW đã thay đổi.
 - Kết nối Looker Studio với MART, không kết nối trực tiếp fact table.
 - Tạo Billing budget alert ở mức `$1`, `$5` và `$10`. Budget alert chỉ cảnh báo, không tự dừng chi phí.
+- Trong Google Cloud Console → IAM & Admin → Quotas, lọc BigQuery và đặt custom `Query usage per day` ở mức phù hợp với thử nghiệm. Đây là quota theo ngày, khác với 1 TiB Free Tier theo tháng và khác với `maximum_bytes_billed` theo từng job.
 - Xóa bảng tạm `_load_*` sau khi xác nhận RAW:
 
 ```powershell
