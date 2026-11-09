@@ -1,14 +1,33 @@
 # City-Scale EV Charging Data Platform
 
-## Portfolio case study
+Nền tảng dữ liệu end-to-end cho dữ liệu trạm sạc xe điện công cộng tại Bắc Kinh. Repository này dùng Python để kiểm tra dữ liệu Parquet, Google Cloud Storage để lưu source artifact, BigQuery để xây dựng mô hình ELT nhiều lớp và Looker Studio để tạo dashboard.
 
-Đây là một dự án portfolio về xây dựng nền tảng dữ liệu cho hoạt động sạc xe điện công cộng tại Bắc Kinh. Mục tiêu của dự án là thể hiện đầy đủ quy trình **data engineering end-to-end**: kiểm tra dữ liệu nguồn, nạp dữ liệu lên Google Cloud, mô hình hóa trong BigQuery, kiểm tra chất lượng dữ liệu và tạo các bảng tổng hợp cho dashboard.
+## 1. Kết quả sau khi chạy xong
 
-> **Trạng thái:** cấu trúc SQL, mô hình dữ liệu và tài liệu đã sẵn sàng để bắt đầu triển khai BigQuery. Phần nạp RAW cần tuân theo hướng dẫn lineage trong [docs/bigquery_guide.md](docs/bigquery_guide.md), không tải trực tiếp bằng autodetect rồi bỏ qua các cột audit.
+Pipeline tạo các lớp sau trong BigQuery:
 
-## Câu chuyện dữ liệu
+```text
+Parquet → GCS → RAW → STAGING → CORE → MART → MONITORING → Looker Studio
+```
 
-Nguồn dữ liệu là bộ Parquet công khai từ Figshare, gồm hạ tầng trạm sạc và các phiên sạc trong tháng 01 và tháng 07 năm 2025:
+| Dataset | Nội dung |
+|---|---|
+| `ev_charging_raw` | Bản sao nguồn, giữ lineage và không khử trùng lặp |
+| `ev_charging_staging` | Chuẩn hóa kiểu dữ liệu, row hash, cờ chất lượng và duplicate |
+| `ev_charging_core` | Star schema gồm dimensions và fact giao dịch |
+| `ev_charging_mart` | KPI, nhu cầu theo giờ, utilization theo trạm và tổng hợp theo grid |
+| `ev_charging_monitoring` | Kết quả data quality và audit pipeline |
+
+Các bảng MART dùng để kết nối Looker Studio:
+
+- `mart_executive_kpi`
+- `mart_hourly_demand`
+- `mart_station_utilization`
+- `mart_spatial_grid_summary`
+
+## 2. Dữ liệu nguồn
+
+Nguồn là bộ dữ liệu công khai trên [Figshare](https://figshare.com/articles/dataset/_b_A_city-scale_dataset_of_public_electric_vehicle_charging_transactions_and_infrastructure_b_/31952289), được phát hành theo CC BY 4.0. Đặt ba file sau vào [data/raw/](data/raw/):
 
 | Tệp | Số dòng |
 |---|---:|
@@ -16,117 +35,329 @@ Nguồn dữ liệu là bộ Parquet công khai từ Figshare, gồm hạ tầng
 | `orders_2025-01_public.parquet` | 2.137.234 |
 | `orders_2025-07_public.parquet` | 6.407.461 |
 
-Nguồn không có transaction ID. Vì vậy, pipeline giữ nguyên dữ liệu trong RAW, tạo row hash xác định trong STAGING, đánh dấu bản sao trùng tuyệt đối và chỉ đưa bản ghi hợp lệ, không tiêu thụ điện bằng 0 vào fact table.
+Dữ liệu chỉ bao phủ tháng 01 và tháng 07 năm 2025. Nguồn không có transaction ID; pipeline tạo `source_row_hash` trong STAGING để nhận diện bản ghi trùng tuyệt đối.
 
-## Kiến trúc
+> **Lưu ý bản quyền:** thư mục `data/` bị Git ignore để tránh commit file Parquet. Không phân phối lại source artifact nếu chưa kiểm tra yêu cầu ghi công và điều khoản CC BY 4.0.
 
-```text
-Figshare Parquet
-      |
-      v
-Python inspect/validate ---> GCS raw/
-      |
-      v
-BigQuery RAW       (dữ liệu nguồn + lineage)
-      |
-      v
-STAGING            (ép kiểu, row hash, cờ chất lượng, khử trùng lặp)
-      |
-      v
-CORE               (star schema)
-      |
-      v
-MART               (bảng tổng hợp cho dashboard)
-      |
-      v
-Looker Studio
+## 3. Yêu cầu môi trường
+
+### Local
+
+- Windows PowerShell
+- Python 3.10+
+- Git
+- Google Cloud CLI (`gcloud`, `bq`)
+- Một GCP project đã bật billing
+
+### Google Cloud
+
+Bật các API:
+
+```powershell
+gcloud services enable bigquery.googleapis.com
+gcloud services enable storage.googleapis.com
 ```
 
-| Lớp | Vai trò |
-|---|---|
-| RAW | Bất biến, giữ nguyên dữ liệu nguồn và metadata nạp |
-| STAGING | Chuẩn hóa kiểu dữ liệu, đánh dấu lỗi và bản sao |
-| CORE | Mô hình phân tích tái sử dụng: dimensions và fact |
-| MART | Tổng hợp theo KPI, giờ, trạm và lưới không gian |
-| MONITORING | Kết quả kiểm tra chất lượng và nhật ký chạy pipeline |
+Tài khoản chạy pipeline cần tối thiểu:
 
-## Điểm thể hiện năng lực trong portfolio
+- BigQuery Job User ở project.
+- BigQuery Data Editor trên các dataset.
+- Storage Object Admin trên bucket.
 
-- Thiết kế ELT nhiều lớp trên BigQuery thay vì biến đổi trực tiếp dữ liệu nguồn.
-- Xử lý dữ liệu không có khóa nghiệp vụ bằng deterministic row hash.
-- Bảo toàn lineage và khả năng truy vết bản ghi bị loại.
-- Partition theo `transaction_date`, cluster theo `station_id` để kiểm soát chi phí.
-- Xây dựng star schema và các mart phục vụ Looker Studio.
-- Định nghĩa rõ metric, giả định và giới hạn của dữ liệu.
+## 4. Cài đặt và kiểm tra local
 
-## Lộ trình chạy dự án
-
-### 1. Chuẩn bị môi trường local
+Chạy tại thư mục gốc repository:
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+Nếu PowerShell chặn activate script:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.venv\Scripts\Activate.ps1
+```
+
+Kiểm tra dữ liệu nguồn:
+
+```powershell
 python -m ingestion.main inspect --data-dir data\raw
 python -m ingestion.main validate --data-dir data\raw
 pytest -q
 ```
 
-Các file Parquet không được CI tải tự động. Không phân phối lại dữ liệu nếu chưa kiểm tra yêu cầu ghi công của giấy phép CC BY 4.0.
+Kết quả validation cần có:
 
-### 2. Chuẩn bị Google Cloud
+- 8.553 station rows.
+- 2.137.234 order rows tháng 01.
+- 6.407.461 order rows tháng 07.
+- Không có orphan `station_id`.
+
+CLI hiện hỗ trợ hai lệnh `inspect` và `validate`; nó chưa tự động tải file, upload GCS hoặc chạy toàn bộ BigQuery pipeline.
+
+## 5. Cấu hình GCP và biến môi trường
+
+Đăng nhập:
 
 ```powershell
+gcloud auth login
 gcloud auth application-default login
 gcloud config set project YOUR_PROJECT_ID
 ```
 
-Điền các biến trong [.env.example](.env.example): project, region, bucket và thư mục dữ liệu. Bật BigQuery API và Cloud Storage API; tạo bucket và dataset trong cùng một location.
-
-### 3. Tạo dataset và hợp đồng bảng
-
-Chạy [sql/ddl/01_create_datasets.sql](sql/ddl/01_create_datasets.sql), sau đó chạy các file DDL `02` đến `06` theo thứ tự. Nếu không dùng `US`, thay location trong file tạo dataset trước khi chạy.
-
-### 4. Nạp RAW có lineage
-
-Upload Parquet lên GCS, sau đó nạp vào các bảng RAW theo hướng dẫn ở [docs/bigquery_guide.md](docs/bigquery_guide.md). Bắt buộc giữ `_source_file`, `_source_month` và `_ingested_at`; đây là điều kiện để các truy vấn STAGING chạy đúng.
-
-### 5. Chạy ELT
+Tạo bucket ở cùng location với BigQuery:
 
 ```powershell
-Get-Content sql\staging\01_build_staging.sql | bq query --use_legacy_sql=false
-Get-Content sql\core\01_build_core.sql | bq query --use_legacy_sql=false
-Get-Content sql\marts\01_build_marts.sql | bq query --use_legacy_sql=false
-Get-Content sql\monitoring\01_run_dq_checks.sql | bq query --use_legacy_sql=false
+gsutil mb -p YOUR_PROJECT_ID -l US gs://YOUR_UNIQUE_BUCKET
 ```
 
-### 6. Kiểm tra và kể câu chuyện dữ liệu
+Copy file mẫu và thiết lập biến trong PowerShell. File `.env` chỉ để tham khảo cấu hình; code hiện tại đọc biến môi trường của process, không tự load `.env`.
 
-Đối chiếu số dòng theo tháng, tỷ lệ bản ghi hợp lệ và kết quả DQ trong dataset MONITORING. Sau đó kết nối Looker Studio chỉ với các bảng MART theo [docs/dashboard_guide.md](docs/dashboard_guide.md).
+```powershell
+Copy-Item .env.example .env
+$env:EV_PROJECT_ID = "YOUR_PROJECT_ID"
+$env:EV_BQ_LOCATION = "US"
+$env:EV_GCS_BUCKET = "YOUR_UNIQUE_BUCKET"
+$env:EV_DATA_DIR = "data/raw"
+```
 
-## Tài liệu dự án
+Kiểm tra project đang dùng:
 
-- [docs/architecture.md](docs/architecture.md): nguyên tắc kiến trúc và vận hành.
-- [docs/bigquery_guide.md](docs/bigquery_guide.md): triển khai BigQuery, nạp RAW và kiểm soát chi phí.
-- [docs/data_dictionary.md](docs/data_dictionary.md): nguồn, schema, metric và các phát hiện profiling.
-- [docs/dashboard_guide.md](docs/dashboard_guide.md): xây dựng dashboard trên Looker Studio.
-- [dashboards/dashboard_specification.md](dashboards/dashboard_specification.md): hợp đồng nguồn dữ liệu và kiểm thử trực quan.
-- [data/README.md](data/README.md): provenance và quy tắc lưu dữ liệu.
+```powershell
+gcloud config get-value project
+gcloud auth application-default print-access-token | Out-Null
+```
 
-## Định nghĩa metric quan trọng
+## 6. Upload Parquet lên GCS
 
-- Đếm giao dịch trong CORE/MART loại bản sao trùng tuyệt đối và phiên có năng lượng bằng 0.
-- Phí được báo cáo riêng theo tiền điện, phí dịch vụ và tổng phí; không gọi là lợi nhuận.
-- `estimated_active_charge_min` là ước tính dựa trên giả định hiệu suất 0,9 và có thể null khi thiếu công suất định mức.
-- Giá trị grid là mã không gian đã ẩn danh, không phải kinh độ/vĩ độ.
+Upload từng file bằng helper có sẵn:
 
-## Giới hạn và hướng phát triển
+```powershell
+python -c "from pathlib import Path; from ingestion.upload_gcs import upload_file; print(upload_file($env:EV_GCS_BUCKET, Path('data/raw/stations_public.parquet')))"
+python -c "from pathlib import Path; from ingestion.upload_gcs import upload_file; print(upload_file($env:EV_GCS_BUCKET, Path('data/raw/orders_2025-01_public.parquet')))"
+python -c "from pathlib import Path; from ingestion.upload_gcs import upload_file; print(upload_file($env:EV_GCS_BUCKET, Path('data/raw/orders_2025-07_public.parquet')))"
+```
 
-Dữ liệu chỉ gồm tháng 01 và tháng 07 năm 2025, không có vehicle ID, transaction ID nguồn hoặc tọa độ chính xác. Chỉ số utilization là proxy dựa trên số phiên trên mỗi súng sạc trong mỗi ngày hoạt động, không phải công suất điện đo được.
+Xác nhận object đã có:
 
-Các bước phát triển tiếp theo cho portfolio:
+```powershell
+gsutil ls gs://$env:EV_GCS_BUCKET/raw/
+```
 
-1. Thêm load manifest gồm filename, checksum và ingestion run.
-2. Tự động hóa orchestration và ghi `pipeline_audit`.
-3. Mở rộng dữ liệu theo tháng để phân tích mùa vụ.
-4. Thêm CI kiểm tra SQL và kiểm tra reconciliation sau mỗi lần build MART.
+## 7. Tạo BigQuery datasets và table contracts
+
+Các file DDL dùng location `US`. Nếu dùng region khác, sửa tất cả giá trị `location = 'US'` trong [sql/ddl/01_create_datasets.sql](sql/ddl/01_create_datasets.sql) trước khi chạy.
+
+Chạy theo đúng thứ tự:
+
+```powershell
+Get-Content sql\ddl\01_create_datasets.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\ddl\02_create_raw_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\ddl\03_create_staging_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\ddl\04_create_core_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\ddl\05_create_mart_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\ddl\06_create_monitoring_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+```
+
+> **Cảnh báo:** các file DDL dùng `CREATE OR REPLACE TABLE`. Chỉ chạy lại khi chấp nhận ghi đè các bảng tương ứng.
+
+## 8. Nạp RAW có lineage
+
+Không nạp Parquet trực tiếp bằng autodetect vào bảng RAW chính vì các bảng RAW yêu cầu thêm `_ingested_at`, `_source_file` và `_source_month`. Hãy load vào bảng tạm, sau đó insert sang RAW bằng metadata.
+
+### 8.1. Load vào bảng tạm
+
+```powershell
+$project = $env:EV_PROJECT_ID
+$location = $env:EV_BQ_LOCATION
+$bucket = $env:EV_GCS_BUCKET
+
+bq load --project_id=$project --location=$location --replace --autodetect --source_format=PARQUET `
+  "${project}:ev_charging_raw._load_stations" `
+  "gs://${bucket}/raw/stations_public.parquet"
+
+bq load --project_id=$project --location=$location --replace --autodetect --source_format=PARQUET `
+  "${project}:ev_charging_raw._load_orders_2025_01" `
+  "gs://${bucket}/raw/orders_2025-01_public.parquet"
+
+bq load --project_id=$project --location=$location --replace --autodetect --source_format=PARQUET `
+  "${project}:ev_charging_raw._load_orders_2025_07" `
+  "gs://${bucket}/raw/orders_2025-07_public.parquet"
+```
+
+### 8.2. Insert vào bảng RAW chính
+
+Chạy từng câu lệnh sau bằng BigQuery Console hoặc lưu thành file tạm `.sql` rồi pipe qua `bq query`. Thay `YOUR_PROJECT_ID` nếu chưa set project mặc định.
+
+```sql
+INSERT INTO `YOUR_PROJECT_ID.ev_charging_raw.raw_stations`
+SELECT
+  geocoding, station_id, construction_site,
+  station_total_power_kw, piles_num, dc_piles_num, ac_piles_num,
+  charging_gun_num, dc_charging_gun_num, ac_charging_gun_num,
+  CURRENT_TIMESTAMP(), 'stations_public.parquet'
+FROM `YOUR_PROJECT_ID.ev_charging_raw._load_stations`;
+
+INSERT INTO `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_01`
+SELECT
+  transaction_date, equipment_classification, rated_gun_power_kw,
+  station_id, pile_id, duration_min, charge_start_time, charge_end_time,
+  total_elec_kwh, total_elec_fee, total_service_fee, total_fee,
+  CURRENT_TIMESTAMP(), 'orders_2025-01_public.parquet', '2025-01'
+FROM `YOUR_PROJECT_ID.ev_charging_raw._load_orders_2025_01`;
+
+INSERT INTO `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_07`
+SELECT
+  transaction_date, equipment_classification, rated_gun_power_kw,
+  station_id, pile_id, duration_min, charge_start_time, charge_end_time,
+  total_elec_kwh, total_elec_fee, total_service_fee, total_fee,
+  CURRENT_TIMESTAMP(), 'orders_2025-07_public.parquet', '2025-07'
+FROM `YOUR_PROJECT_ID.ev_charging_raw._load_orders_2025_07`;
+```
+
+Nếu chạy lại từ đầu, dùng `TRUNCATE TABLE` cho ba bảng RAW chính trước khi insert để tránh nhân đôi dữ liệu:
+
+```sql
+TRUNCATE TABLE `YOUR_PROJECT_ID.ev_charging_raw.raw_stations`;
+TRUNCATE TABLE `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_01`;
+TRUNCATE TABLE `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_07`;
+```
+
+Kiểm tra RAW:
+
+```sql
+SELECT _source_file, COUNT(*) AS row_count
+FROM `YOUR_PROJECT_ID.ev_charging_raw.raw_stations`
+GROUP BY _source_file;
+
+SELECT _source_month, _source_file, COUNT(*) AS row_count
+FROM `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_01`
+GROUP BY _source_month, _source_file;
+
+SELECT _source_month, _source_file, COUNT(*) AS row_count
+FROM `YOUR_PROJECT_ID.ev_charging_raw.raw_orders_2025_07`
+GROUP BY _source_month, _source_file;
+```
+
+Expected counts là 8.553, 2.137.234 và 6.407.461.
+
+## 9. Chạy pipeline ELT
+
+Chạy lần lượt RAW → STAGING → CORE → MART → MONITORING:
+
+```powershell
+Get-Content sql\staging\01_build_staging.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\core\01_build_core.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\marts\01_build_marts.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+Get-Content sql\monitoring\01_run_dq_checks.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+```
+
+Các script SQL hiện dùng trực tiếp tên dataset `ev_charging_*` và không dùng biến project trong câu lệnh. Vì vậy hãy chạy `gcloud config set project YOUR_PROJECT_ID` trước, hoặc thêm project qualifier vào SQL nếu muốn chạy trong project khác.
+
+## 10. Kiểm tra sau pipeline
+
+### Reconcile số dòng
+
+```sql
+SELECT source_month, COUNT(*) AS fact_rows
+FROM `YOUR_PROJECT_ID.ev_charging_core.fact_charging_transaction`
+GROUP BY source_month
+ORDER BY source_month;
+```
+
+Fact rows sẽ nhỏ hơn RAW vì CORE loại bản ghi duplicate, bản ghi invalid và phiên có năng lượng bằng 0.
+
+### Kiểm tra DQ
+
+```sql
+SELECT *
+FROM `YOUR_PROJECT_ID.ev_charging_monitoring.dq_summary`
+ORDER BY run_timestamp DESC;
+
+SELECT *
+FROM `YOUR_PROJECT_ID.ev_charging_monitoring.dq_results`
+ORDER BY check_timestamp DESC;
+```
+
+Không publish dashboard nếu DQ không đạt hoặc số liệu MART không reconcile với CORE.
+
+### Kiểm tra bảng MART
+
+```sql
+SELECT * FROM `YOUR_PROJECT_ID.ev_charging_mart.mart_executive_kpi`;
+SELECT COUNT(*) FROM `YOUR_PROJECT_ID.ev_charging_mart.mart_hourly_demand`;
+SELECT COUNT(*) FROM `YOUR_PROJECT_ID.ev_charging_mart.mart_station_utilization`;
+SELECT COUNT(*) FROM `YOUR_PROJECT_ID.ev_charging_mart.mart_spatial_grid_summary`;
+```
+
+## 11. Kiểm soát chi phí BigQuery
+
+Luôn dry run trước truy vấn lớn:
+
+```powershell
+bq query --use_legacy_sql=false --dry_run --format=prettyjson `
+  "SELECT COUNT(*) FROM \`$env:EV_PROJECT_ID.ev_charging_core.fact_charging_transaction\` WHERE transaction_date BETWEEN '2025-01-01' AND '2025-01-31'"
+```
+
+Nguyên tắc:
+
+- Luôn lọc `transaction_date` khi đọc bảng partitioned.
+- Không dùng `SELECT *` trong truy vấn production.
+- Kết nối Looker Studio với MART, không kết nối trực tiếp fact table.
+- Xóa bảng tạm `_load_*` sau khi xác nhận RAW:
+
+```powershell
+bq rm -f -t "${project}:ev_charging_raw._load_stations"
+bq rm -f -t "${project}:ev_charging_raw._load_orders_2025_01"
+bq rm -f -t "${project}:ev_charging_raw._load_orders_2025_07"
+```
+
+## 12. Kết nối Looker Studio
+
+1. Mở Looker Studio và chọn **Create → Report**.
+2. Chọn connector **BigQuery**.
+3. Chọn project → dataset `ev_charging_mart`.
+4. Tạo data source cho bốn bảng MART.
+5. Định dạng tiền tệ là CNY, năng lượng là kWh.
+6. Thêm filter `source_month` và filter loại trạm khi có trường tương ứng.
+7. Kiểm tra tổng giao dịch, tổng năng lượng và tổng phí khớp với BigQuery.
+
+Chi tiết bố cục dashboard nằm trong [docs/dashboard_guide.md](docs/dashboard_guide.md) và [dashboards/dashboard_specification.md](dashboards/dashboard_specification.md).
+
+## 13. Cấu trúc repository
+
+```text
+config/                 Cấu hình development
+data/raw/               Parquet source artifact, bị Git ignore
+data_quality/           Thư mục cho checks và reports
+docs/                   Kiến trúc, BigQuery, data dictionary, dashboard
+ingestion/              Inspect, validate, upload GCS và helper BigQuery
+sql/ddl/                Tạo dataset và table contracts
+sql/staging/            Chuẩn hóa và gắn cờ dữ liệu
+sql/core/               Xây dựng star schema
+sql/marts/              Xây dựng bảng phục vụ dashboard
+sql/monitoring/         Chạy data quality checks
+tests/                  Unit và integration tests
+```
+
+## 14. Quy tắc metric và giới hạn dữ liệu
+
+- Giao dịch trong CORE/MART không bao gồm bản sao trùng tuyệt đối và phiên có năng lượng bằng 0.
+- `total_fee` là tổng tiền điện và phí dịch vụ, không phải lợi nhuận nhà vận hành.
+- `estimated_active_charge_min` là ước tính dựa trên hiệu suất 0,9; có thể null khi thiếu công suất định mức.
+- `geocoding`, `grid_x` và `grid_y` là mã grid ẩn danh, không phải latitude/longitude.
+- Utilization là proxy dựa trên số phiên trên mỗi súng trong mỗi ngày hoạt động, không phải công suất điện đo được.
+- Dữ liệu không có vehicle ID, source transaction ID hoặc tọa độ chính xác.
+
+## 15. Tài liệu tham khảo
+
+- [docs/architecture.md](docs/architecture.md): kiến trúc và nguyên tắc vận hành.
+- [docs/bigquery_guide.md](docs/bigquery_guide.md): triển khai BigQuery và kiểm soát chi phí.
+- [docs/data_dictionary.md](docs/data_dictionary.md): schema, profiling và metric.
+- [docs/dashboard_guide.md](docs/dashboard_guide.md): xây dựng Looker Studio.
+- [dashboards/dashboard_specification.md](dashboards/dashboard_specification.md): dashboard contract và visual QA.
+- [data/README.md](data/README.md): provenance dữ liệu nguồn.
