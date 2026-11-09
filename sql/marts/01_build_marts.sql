@@ -84,9 +84,30 @@ WITH station_grid AS (
   FROM ev_charging_core.dim_station
   GROUP BY grid_x, grid_y
 ),
+dominant_site AS (
+  SELECT grid_x, grid_y, construction_site_en AS dominant_site_type
+  FROM (
+    SELECT
+      grid_x,
+      grid_y,
+      construction_site_en,
+      COUNT(*) AS site_count,
+      ROW_NUMBER() OVER (
+        PARTITION BY grid_x, grid_y
+        ORDER BY COUNT(*) DESC, construction_site_en
+      ) AS site_rank
+    FROM ev_charging_core.dim_station
+    WHERE construction_site_en IS NOT NULL
+    GROUP BY grid_x, grid_y, construction_site_en
+  )
+  WHERE site_rank = 1
+),
 demand AS (
   SELECT s.grid_x, s.grid_y, f.source_month,
     COUNT(*) AS transaction_count, SUM(f.total_elec_kwh) AS total_energy_kwh,
+    SUM(f.total_fee) AS total_revenue_cny,
+    AVG(f.total_elec_kwh) AS avg_energy_per_session_kwh,
+    AVG(f.duration_min) AS avg_duration_min,
     COUNT(DISTINCT s.station_id) AS active_station_count
   FROM ev_charging_core.fact_charging_transaction AS f
   JOIN ev_charging_core.dim_station AS s USING (station_id)
@@ -95,8 +116,11 @@ demand AS (
 SELECT
   d.grid_x, d.grid_y, d.source_month, g.station_count,
   g.total_installed_power_kw, g.total_charging_guns,
-  d.transaction_count, d.total_energy_kwh,
+  d.transaction_count AS total_transactions, d.total_energy_kwh, d.total_revenue_cny,
+  d.avg_energy_per_session_kwh, d.avg_duration_min,
   SAFE_DIVIDE(d.transaction_count, d.active_station_count) AS transactions_per_station,
+  ds.dominant_site_type,
   run_ts AS _computed_at
 FROM demand AS d
-JOIN station_grid AS g USING (grid_x, grid_y);
+JOIN station_grid AS g USING (grid_x, grid_y)
+LEFT JOIN dominant_site AS ds USING (grid_x, grid_y);

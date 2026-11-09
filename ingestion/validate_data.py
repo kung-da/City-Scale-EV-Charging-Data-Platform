@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import pyarrow.parquet as pq
 
 ORDER_COLUMNS = [
     "transaction_date",
@@ -23,7 +22,21 @@ ORDER_COLUMNS = [
 
 
 def validate_source_directory(directory: Path) -> dict[str, Any]:
+    import pyarrow.parquet as pq
+
     stations = pq.read_table(directory / "stations_public.parquet").to_pandas()
+    orders = {
+        path.name: pq.read_table(path).to_pandas()
+        for path in sorted(directory.glob("orders_*.parquet"))
+    }
+    return validate_frames(stations, orders)
+
+
+def validate_frames(
+    stations: pd.DataFrame,
+    orders_by_file: dict[str, pd.DataFrame],
+) -> dict[str, Any]:
+    """Validate in-memory frames so unit tests do not require source artifacts."""
     station_ids = set(stations["station_id"])
     result: dict[str, Any] = {
         "station_rows": len(stations),
@@ -36,9 +49,8 @@ def validate_source_directory(directory: Path) -> dict[str, Any]:
         ),
         "orders": {},
     }
-    for path in sorted(directory.glob("orders_*.parquet")):
-        orders = pq.read_table(path).to_pandas()
-        result["orders"][path.name] = {
+    for filename, orders in orders_by_file.items():
+        result["orders"][filename] = {
             "rows": len(orders),
             "exact_duplicate_rows": int(orders.duplicated().sum()),
             "orphan_station_rows": int((~orders["station_id"].isin(station_ids)).sum()),

@@ -50,6 +50,32 @@ LEFT JOIN ev_charging_staging.stg_stations AS s USING (station_id)
 UNION ALL
 
 SELECT
+  'staging_january_row_reconciliation',
+  'ev_charging_raw.raw_orders_2025_01',
+  'reconciliation',
+  (SELECT COUNT(*) FROM ev_charging_raw.raw_orders_2025_01),
+  ABS(
+    (SELECT COUNT(*) FROM ev_charging_raw.raw_orders_2025_01)
+    - (SELECT COUNT(*) FROM ev_charging_staging.stg_orders WHERE source_month = '2025-01')
+  ),
+  0.0
+
+UNION ALL
+
+SELECT
+  'staging_july_row_reconciliation',
+  'ev_charging_raw.raw_orders_2025_07',
+  'reconciliation',
+  (SELECT COUNT(*) FROM ev_charging_raw.raw_orders_2025_07),
+  ABS(
+    (SELECT COUNT(*) FROM ev_charging_raw.raw_orders_2025_07)
+    - (SELECT COUNT(*) FROM ev_charging_staging.stg_orders WHERE source_month = '2025-07')
+  ),
+  0.0
+
+UNION ALL
+
+SELECT
   'core_source_reconciliation',
   'ev_charging_core.fact_charging_transaction',
   'reconciliation',
@@ -71,8 +97,8 @@ SELECT
   check_type,
   records_checked,
   records_failed,
-  SAFE_DIVIDE(records_failed, records_checked),
-  SAFE_DIVIDE(records_failed, records_checked) <= threshold,
+  COALESCE(SAFE_DIVIDE(records_failed, records_checked), 0),
+  COALESCE(SAFE_DIVIDE(records_failed, records_checked), 0) <= threshold,
   TO_JSON_STRING(STRUCT(records_failed AS failed_rows, records_checked AS checked_rows)),
   threshold,
   run_ts
@@ -85,11 +111,11 @@ INSERT INTO ev_charging_monitoring.dq_summary (
 SELECT
   run_id,
   COUNT(*),
-  COUNTIF(SAFE_DIVIDE(records_failed, records_checked) <= threshold),
-  COUNTIF(SAFE_DIVIDE(records_failed, records_checked) > threshold),
-  SAFE_DIVIDE(COUNTIF(SAFE_DIVIDE(records_failed, records_checked) <= threshold), COUNT(*)),
+  COUNTIF(COALESCE(SAFE_DIVIDE(records_failed, records_checked), 0) <= threshold),
+  COUNTIF(COALESCE(SAFE_DIVIDE(records_failed, records_checked), 0) > threshold),
+  SAFE_DIVIDE(COUNTIF(COALESCE(SAFE_DIVIDE(records_failed, records_checked), 0) <= threshold), COUNT(*)),
   CASE
-    WHEN COUNTIF(SAFE_DIVIDE(records_failed, records_checked) > threshold) = 0 THEN 'PASSED'
+    WHEN COUNTIF(COALESCE(SAFE_DIVIDE(records_failed, records_checked), 0) > threshold) = 0 THEN 'PASSED'
     ELSE 'FAILED'
   END,
   run_ts,

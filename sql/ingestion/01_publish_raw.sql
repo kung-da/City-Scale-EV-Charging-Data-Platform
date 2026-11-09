@@ -1,6 +1,23 @@
 -- Publish validated temporary loads into the contract-defined RAW tables.
--- The source-specific tables are replaced atomically, so rerunning this script
+-- Each source-specific table is replaced atomically, so rerunning this script
 -- does not append duplicate rows. Temporary _load_* tables must already exist.
+-- The preflight assertions run before any replacement; if a later replacement
+-- fails, rerunning this idempotent script restores all three RAW tables.
+
+ASSERT (SELECT COUNT(*) FROM ev_charging_raw._load_stations) > 0
+  AS 'Station temporary load is empty; RAW publish aborted.';
+ASSERT (SELECT COUNT(*) FROM ev_charging_raw._load_orders_2025_01) > 0
+  AS 'January temporary load is empty; RAW publish aborted.';
+ASSERT (SELECT COUNT(*) FROM ev_charging_raw._load_orders_2025_07) > 0
+  AS 'July temporary load is empty; RAW publish aborted.';
+ASSERT (
+  SELECT COUNTIF(transaction_date IS NULL)
+  FROM ev_charging_raw._load_orders_2025_01
+) = 0 AS 'January load contains NULL transaction_date; RAW publish aborted.';
+ASSERT (
+  SELECT COUNTIF(transaction_date IS NULL)
+  FROM ev_charging_raw._load_orders_2025_07
+) = 0 AS 'July load contains NULL transaction_date; RAW publish aborted.';
 
 CREATE OR REPLACE TABLE ev_charging_raw.raw_stations AS
 SELECT

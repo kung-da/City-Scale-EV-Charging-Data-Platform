@@ -3,10 +3,9 @@
 from pathlib import Path
 from typing import Any
 
-import pyarrow.parquet as pq
-
-
 def inspect_parquet(path: Path) -> dict[str, Any]:
+    import pyarrow.parquet as pq
+
     parquet = pq.ParquetFile(path)
     schema = parquet.schema_arrow
     return {
