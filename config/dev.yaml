@@ -1,0 +1,11 @@
+project_id: ${EV_PROJECT_ID}
+location: ${EV_BQ_LOCATION:US}
+gcs_bucket: ${EV_GCS_BUCKET}
+data_dir: ${EV_DATA_DIR:data/raw}
+source_item_url: ${EV_SOURCE_ITEM_URL}
+datasets:
+  raw: ev_charging_raw
+  staging: ev_charging_staging
+  core: ev_charging_core
+  mart: ev_charging_mart
+  monitoring: ev_charging_monitoring
