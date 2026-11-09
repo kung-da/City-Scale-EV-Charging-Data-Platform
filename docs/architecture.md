@@ -1,22 +1,27 @@
-# Architecture
+# Kiến trúc nền tảng
 
-## Layer responsibilities
+## Trách nhiệm của từng lớp
 
-| Layer | Responsibility | Rule |
+| Lớp | Trách nhiệm | Nguyên tắc |
 |---|---|---|
-| RAW | Immutable source landing | Preserve source columns and lineage; no deduplication |
-| STAGING | Type normalization and quality flags | Canonicalize exact duplicates and audit exclusions |
-| CORE | Reusable analytical model | One fact row per canonical valid non-zero session |
-| MART | Dashboard-oriented aggregates | Avoid repeated scans of the fact table |
-| MONITORING | Quality and execution evidence | Store every check result and run summary |
+| RAW | Vùng tiếp nhận bất biến | Giữ cột nguồn và lineage; không khử trùng lặp |
+| STAGING | Chuẩn hóa và gắn cờ chất lượng | Tạo row hash, đánh dấu bản sao và bản ghi bị loại |
+| CORE | Mô hình phân tích dùng chung | Một fact row cho mỗi phiên hợp lệ, không tiêu thụ bằng 0 |
+| MART | Tổng hợp cho nghiệp vụ | Tránh quét fact table lặp lại từ dashboard |
+| MONITORING | Bằng chứng chất lượng và vận hành | Lưu kết quả từng check và tóm tắt mỗi lần chạy |
 
-## Reprocessing
+## Luồng dữ liệu
 
-Loads are idempotent by source file and table replacement. A rerun replaces the corresponding raw table and rebuilds downstream tables from the source. For production history, use a load manifest keyed by source filename, checksum, and ingestion run before allowing a new version.
+Parquet được kiểm tra local trước khi upload lên GCS. BigQuery RAW giữ dữ liệu nguồn cùng `_source_file`, `_source_month` và `_ingested_at`. STAGING đọc RAW để ép kiểu, tạo `source_row_hash` và `is_exact_duplicate`; CORE chỉ nhận dữ liệu hợp lệ; MART phục vụ Looker Studio.
 
-## Cost controls
+## Reprocessing và tính lặp lại
 
-- Parquet is loaded once into partitioned BigQuery tables.
-- Fact and staging tables are partitioned by `transaction_date` and clustered by `station_id`.
-- Looker Studio reads MART tables.
-- Use BigQuery dry runs and date predicates before executing exploratory queries.
+Các bảng được tạo lại theo source file và pipeline run nên một lần chạy lại cho cùng input sẽ cho cùng logic kết quả. Khi chuyển sang production, cần thêm load manifest gồm filename, checksum, ingestion run và trạng thái để kiểm soát phiên bản trước khi cho phép nạp dữ liệu mới.
+
+## Kiểm soát chi phí
+
+- Load Parquet một lần vào các bảng BigQuery đã có partition.
+- Partition fact và staging theo `transaction_date`, cluster theo `station_id`.
+- Dashboard chỉ đọc các bảng MART.
+- Dùng dry run và luôn lọc partition trước khi chạy truy vấn khám phá.
+- Không dùng `SELECT *` trong truy vấn production.

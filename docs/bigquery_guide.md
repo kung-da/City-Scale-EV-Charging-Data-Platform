@@ -1,39 +1,49 @@
-# BigQuery guide
+# Hướng dẫn triển khai BigQuery
 
-## Required resources
+## 1. Tài nguyên bắt buộc
 
-- One GCP project with billing enabled.
-- BigQuery API and Cloud Storage API enabled.
-- A regional GCS bucket and BigQuery datasets in the same location.
-- A user or service account with BigQuery Job User, BigQuery Data Editor on the datasets, and Storage Object Admin on the bucket.
+- Một GCP project đã bật billing.
+- BigQuery API và Cloud Storage API.
+- Một bucket GCS và các dataset BigQuery ở cùng location.
+- Quyền tối thiểu: BigQuery Job User, BigQuery Data Editor trên dataset và Storage Object Admin trên bucket.
 
-Use a dedicated service account in production. Never commit JSON keys; prefer Workload Identity Federation in GitHub Actions.
+Trong production, dùng service account với quyền giới hạn. Không commit JSON key; ưu tiên Workload Identity Federation cho GitHub Actions.
 
-## Create datasets
+## 2. Tạo dataset
 
-Replace `US` in [sql/ddl/01_create_datasets.sql](../sql/ddl/01_create_datasets.sql) when your bucket uses another location, then run:
+Mặc định SQL dùng location `US`. Nếu bucket ở region khác, sửa `location` trong [sql/ddl/01_create_datasets.sql](../sql/ddl/01_create_datasets.sql) trước khi chạy:
 
 ```powershell
 Get-Content sql\ddl\01_create_datasets.sql | bq query --use_legacy_sql=false
 ```
 
-Run DDL files `02` through `06` in order. The DDL is descriptive and establishes stable table contracts; the transformation scripts create the populated tables.
+Chạy tiếp DDL `02` đến `06` theo thứ tự. DDL định nghĩa contract ổn định; các script transformation mới tạo dữ liệu.
 
-## Load source data
+## 3. Upload và nạp dữ liệu RAW
+
+Upload source artifact lên GCS:
 
 ```powershell
 python -c "from pathlib import Path; from ingestion.upload_gcs import upload_file; print(upload_file('YOUR_BUCKET', Path('data/raw/stations_public.parquet')))"
 ```
 
-For local development, use `ingestion.load_bigquery.load_parquet`. For production, load from the versioned GCS URI and record the checksum from `data/raw/files_metadata.json`.
+Không nạp Parquet trực tiếp bằng autodetect vào bảng RAW rồi bỏ qua audit columns. Các bảng RAW yêu cầu:
 
-The raw load must preserve:
+- `_ingested_at`: thời điểm nạp;
+- `_source_file`: tên file nguồn;
+- `_source_month`: tháng nguồn đối với orders.
 
-- native `DATE` for `transaction_date`;
-- `TIMESTAMP` values without clipping cross-month sessions;
-- `_source_file`, `_source_month`, and `_ingested_at`.
+Helper `ingestion.load_bigquery.load_parquet` hiện là helper load Parquet tối thiểu với autodetect; nó không tự bổ sung đủ lineage columns của contract RAW. Khi triển khai, hãy load vào bảng tạm rồi `INSERT ... SELECT` sang bảng RAW với metadata, hoặc dùng một job nạp có bước metadata tương đương. Đây là bước cần hoàn thiện trước khi tự động hóa production.
 
-## Run ELT
+Sau khi nạp, kiểm tra:
+
+```sql
+SELECT _source_file, COUNT(*) AS rows
+FROM `YOUR_PROJECT.ev_charging_raw.raw_orders_2025_01`
+GROUP BY _source_file;
+```
+
+## 4. Chạy ELT
 
 ```powershell
 Get-Content sql\staging\01_build_staging.sql | bq query --use_legacy_sql=false
@@ -42,23 +52,27 @@ Get-Content sql\marts\01_build_marts.sql | bq query --use_legacy_sql=false
 Get-Content sql\monitoring\01_run_dq_checks.sql | bq query --use_legacy_sql=false
 ```
 
-## Validate and estimate cost
+Thứ tự bắt buộc là RAW → STAGING → CORE → MART → MONITORING. Không chạy dashboard trước khi MONITORING hoàn tất.
 
-Use the BigQuery UI query validator or CLI dry run:
-
-```powershell
-bq query --use_legacy_sql=false --dry_run --format=prettyjson "SELECT * FROM \`YOUR_PROJECT.ev_charging_mart.mart_executive_kpi\`"
-```
-
-Avoid `SELECT *` in production and always filter partitioned facts by `transaction_date`. Review bytes processed before running full-period queries.
-
-## Useful checks
+## 5. Kiểm tra sau khi chạy
 
 ```sql
-SELECT * FROM `YOUR_PROJECT.ev_charging_monitoring.dq_summary`
-ORDER BY run_timestamp DESC;
-
 SELECT source_month, COUNT(*) AS rows
 FROM `YOUR_PROJECT.ev_charging_core.fact_charging_transaction`
-GROUP BY source_month;
+GROUP BY source_month
+ORDER BY source_month;
+
+SELECT *
+FROM `YOUR_PROJECT.ev_charging_monitoring.dq_summary`
+ORDER BY run_timestamp DESC;
 ```
+
+Đối chiếu số dòng nguồn theo tháng, kiểm tra foreign key station và xác nhận `overall_status` trước khi publish dashboard.
+
+## 6. Ước tính chi phí
+
+```powershell
+bq query --use_legacy_sql=false --dry_run --format=prettyjson "SELECT COUNT(*) FROM \`YOUR_PROJECT.ev_charging_core.fact_charging_transaction\` WHERE transaction_date BETWEEN '2025-01-01' AND '2025-01-31'"
+```
+
+Luôn lọc `transaction_date` khi đọc bảng partitioned. Tránh `SELECT *`, xem bytes processed trong dry run và để Looker Studio đọc MART thay vì fact table.

@@ -1,30 +1,67 @@
-# EV Charging Intelligence - City-Scale Data Platform
+# City-Scale EV Charging Data Platform
 
-Production-minded ELT demo for Beijing public EV charging data from Figshare. The platform preserves Parquet source files, validates them, loads BigQuery layers, builds a star schema, and publishes dashboard-ready marts for Looker Studio.
+## Portfolio case study
 
-## What is included
+Đây là một dự án portfolio về xây dựng nền tảng dữ liệu cho hoạt động sạc xe điện công cộng tại Bắc Kinh. Mục tiêu của dự án là thể hiện đầy đủ quy trình **data engineering end-to-end**: kiểm tra dữ liệu nguồn, nạp dữ liệu lên Google Cloud, mô hình hóa trong BigQuery, kiểm tra chất lượng dữ liệu và tạo các bảng tổng hợp cho dashboard.
 
-- Source profiling and verified data dictionary.
-- Python inspection, validation, GCS upload, and BigQuery load helpers.
-- BigQuery RAW, STAGING, CORE, MART, and MONITORING SQL.
-- Exact-duplicate auditing and rejected-record traceability.
-- Dimensional model with station, date, time, and charging transaction fact tables.
-- Pre-aggregated executive, hourly, station, and spatial marts.
-- Unit tests and GitHub Actions CI.
+> **Trạng thái:** cấu trúc SQL, mô hình dữ liệu và tài liệu đã sẵn sàng để bắt đầu triển khai BigQuery. Phần nạp RAW cần tuân theo hướng dẫn lineage trong [docs/bigquery_guide.md](docs/bigquery_guide.md), không tải trực tiếp bằng autodetect rồi bỏ qua các cột audit.
 
-## Verified source
+## Câu chuyện dữ liệu
 
-The local source files are:
+Nguồn dữ liệu là bộ Parquet công khai từ Figshare, gồm hạ tầng trạm sạc và các phiên sạc trong tháng 01 và tháng 07 năm 2025:
 
-| File | Rows |
+| Tệp | Số dòng |
 |---|---:|
-| `stations_public.parquet` | 8,553 |
-| `orders_2025-01_public.parquet` | 2,137,234 |
-| `orders_2025-07_public.parquet` | 6,407,461 |
+| `stations_public.parquet` | 8.553 |
+| `orders_2025-01_public.parquet` | 2.137.234 |
+| `orders_2025-07_public.parquet` | 6.407.461 |
 
-The source has no transaction ID. RAW preserves all rows; STAGING canonicalizes exact duplicates using a deterministic row hash and records the duplicate policy. See [docs/data_dictionary.md](docs/data_dictionary.md).
+Nguồn không có transaction ID. Vì vậy, pipeline giữ nguyên dữ liệu trong RAW, tạo row hash xác định trong STAGING, đánh dấu bản sao trùng tuyệt đối và chỉ đưa bản ghi hợp lệ, không tiêu thụ điện bằng 0 vào fact table.
 
-## Local quick start
+## Kiến trúc
+
+```text
+Figshare Parquet
+      |
+      v
+Python inspect/validate ---> GCS raw/
+      |
+      v
+BigQuery RAW       (dữ liệu nguồn + lineage)
+      |
+      v
+STAGING            (ép kiểu, row hash, cờ chất lượng, khử trùng lặp)
+      |
+      v
+CORE               (star schema)
+      |
+      v
+MART               (bảng tổng hợp cho dashboard)
+      |
+      v
+Looker Studio
+```
+
+| Lớp | Vai trò |
+|---|---|
+| RAW | Bất biến, giữ nguyên dữ liệu nguồn và metadata nạp |
+| STAGING | Chuẩn hóa kiểu dữ liệu, đánh dấu lỗi và bản sao |
+| CORE | Mô hình phân tích tái sử dụng: dimensions và fact |
+| MART | Tổng hợp theo KPI, giờ, trạm và lưới không gian |
+| MONITORING | Kết quả kiểm tra chất lượng và nhật ký chạy pipeline |
+
+## Điểm thể hiện năng lực trong portfolio
+
+- Thiết kế ELT nhiều lớp trên BigQuery thay vì biến đổi trực tiếp dữ liệu nguồn.
+- Xử lý dữ liệu không có khóa nghiệp vụ bằng deterministic row hash.
+- Bảo toàn lineage và khả năng truy vết bản ghi bị loại.
+- Partition theo `transaction_date`, cluster theo `station_id` để kiểm soát chi phí.
+- Xây dựng star schema và các mart phục vụ Looker Studio.
+- Định nghĩa rõ metric, giả định và giới hạn của dữ liệu.
+
+## Lộ trình chạy dự án
+
+### 1. Chuẩn bị môi trường local
 
 ```powershell
 py -m venv .venv
@@ -35,64 +72,61 @@ python -m ingestion.main validate --data-dir data\raw
 pytest -q
 ```
 
-The Parquet files are not downloaded by CI and should not be redistributed without checking the CC BY 4.0 attribution and source terms.
+Các file Parquet không được CI tải tự động. Không phân phối lại dữ liệu nếu chưa kiểm tra yêu cầu ghi công của giấy phép CC BY 4.0.
 
-## BigQuery deployment
+### 2. Chuẩn bị Google Cloud
 
-1. Install the Google Cloud CLI and authenticate with Application Default Credentials:
-
-   ```powershell
-   gcloud auth application-default login
-   gcloud config set project YOUR_PROJECT_ID
-   ```
-
-2. Set environment variables from `.env.example`.
-3. Run [sql/ddl/01_create_datasets.sql](sql/ddl/01_create_datasets.sql), then the remaining DDL scripts in numeric order.
-4. Upload files to GCS or load local Parquet with the Python helper. The raw tables should retain `_source_file`, `_source_month`, and `_ingested_at`.
-5. Run, in order:
-
-   - `sql/staging/01_build_staging.sql`
-   - `sql/core/01_build_core.sql`
-   - `sql/marts/01_build_marts.sql`
-   - `sql/monitoring/01_run_dq_checks.sql`
-
-Detailed commands, IAM, cost controls, and dry-run guidance are in [docs/bigquery_guide.md](docs/bigquery_guide.md).
-
-## Looker Studio
-
-Connect Looker Studio to the MART tables, not raw transaction tables. The required pages, fields, filters, and chart definitions are in [docs/dashboard_guide.md](docs/dashboard_guide.md) and [dashboards/dashboard_specification.md](dashboards/dashboard_specification.md).
-
-## Architecture
-
-```text
-Figshare Parquet
-      |
-      v
-Python inspect/validate ---> immutable GCS raw/
-      |
-      v
-BigQuery RAW (source shape + lineage)
-      |
-      v
-STAGING (typed, hashed, deduplicated, flagged)
-      |
-      v
-CORE (star schema)
-      |
-      v
-MART (Looker Studio aggregates)
-      |
-      v
-Looker Studio dashboards
+```powershell
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
 ```
 
-## Important metric definitions
+Điền các biến trong [.env.example](.env.example): project, region, bucket và thư mục dữ liệu. Bật BigQuery API và Cloud Storage API; tạo bucket và dataset trong cùng một location.
 
-- Transaction counts in CORE/MART exclude exact duplicate copies and zero-energy sessions.
-- Fees are reported as source electricity fee, service fee, and total fee; they are not labelled operator profit.
-- `estimated_active_charge_min` uses the documented 0.9 efficiency assumption and is nullable when rated power is missing.
-- Grid values are anonymized codes, not coordinates.
+### 3. Tạo dataset và hợp đồng bảng
 
-## Limitations
+Chạy [sql/ddl/01_create_datasets.sql](sql/ddl/01_create_datasets.sql), sau đó chạy các file DDL `02` đến `06` theo thứ tự. Nếu không dùng `US`, thay location trong file tạo dataset trước khi chạy.
 
-The dataset covers January and July 2025 only, does not include vehicle identifiers, and does not provide a source transaction ID or precise coordinates. Utilization is a proxy based on sessions per installed gun per active day, not measured electrical capacity utilization.
+### 4. Nạp RAW có lineage
+
+Upload Parquet lên GCS, sau đó nạp vào các bảng RAW theo hướng dẫn ở [docs/bigquery_guide.md](docs/bigquery_guide.md). Bắt buộc giữ `_source_file`, `_source_month` và `_ingested_at`; đây là điều kiện để các truy vấn STAGING chạy đúng.
+
+### 5. Chạy ELT
+
+```powershell
+Get-Content sql\staging\01_build_staging.sql | bq query --use_legacy_sql=false
+Get-Content sql\core\01_build_core.sql | bq query --use_legacy_sql=false
+Get-Content sql\marts\01_build_marts.sql | bq query --use_legacy_sql=false
+Get-Content sql\monitoring\01_run_dq_checks.sql | bq query --use_legacy_sql=false
+```
+
+### 6. Kiểm tra và kể câu chuyện dữ liệu
+
+Đối chiếu số dòng theo tháng, tỷ lệ bản ghi hợp lệ và kết quả DQ trong dataset MONITORING. Sau đó kết nối Looker Studio chỉ với các bảng MART theo [docs/dashboard_guide.md](docs/dashboard_guide.md).
+
+## Tài liệu dự án
+
+- [docs/architecture.md](docs/architecture.md): nguyên tắc kiến trúc và vận hành.
+- [docs/bigquery_guide.md](docs/bigquery_guide.md): triển khai BigQuery, nạp RAW và kiểm soát chi phí.
+- [docs/data_dictionary.md](docs/data_dictionary.md): nguồn, schema, metric và các phát hiện profiling.
+- [docs/dashboard_guide.md](docs/dashboard_guide.md): xây dựng dashboard trên Looker Studio.
+- [dashboards/dashboard_specification.md](dashboards/dashboard_specification.md): hợp đồng nguồn dữ liệu và kiểm thử trực quan.
+- [data/README.md](data/README.md): provenance và quy tắc lưu dữ liệu.
+
+## Định nghĩa metric quan trọng
+
+- Đếm giao dịch trong CORE/MART loại bản sao trùng tuyệt đối và phiên có năng lượng bằng 0.
+- Phí được báo cáo riêng theo tiền điện, phí dịch vụ và tổng phí; không gọi là lợi nhuận.
+- `estimated_active_charge_min` là ước tính dựa trên giả định hiệu suất 0,9 và có thể null khi thiếu công suất định mức.
+- Giá trị grid là mã không gian đã ẩn danh, không phải kinh độ/vĩ độ.
+
+## Giới hạn và hướng phát triển
+
+Dữ liệu chỉ gồm tháng 01 và tháng 07 năm 2025, không có vehicle ID, transaction ID nguồn hoặc tọa độ chính xác. Chỉ số utilization là proxy dựa trên số phiên trên mỗi súng sạc trong mỗi ngày hoạt động, không phải công suất điện đo được.
+
+Các bước phát triển tiếp theo cho portfolio:
+
+1. Thêm load manifest gồm filename, checksum và ingestion run.
+2. Tự động hóa orchestration và ghi `pipeline_audit`.
+3. Mở rộng dữ liệu theo tháng để phân tích mùa vụ.
+4. Thêm CI kiểm tra SQL và kiểm tra reconciliation sau mỗi lần build MART.

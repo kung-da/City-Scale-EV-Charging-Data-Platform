@@ -1,40 +1,44 @@
-# Looker Studio / Data Studio guide
+# Hướng dẫn Looker Studio
 
-## Connect
+## Kết nối dữ liệu
 
-1. Open Looker Studio and choose **Create > Report**.
-2. Choose the **BigQuery** connector.
-3. Select the GCP project, dataset `ev_charging_mart`, and one MART table.
-4. Use **Owner's credentials** only when approved by the project owner; otherwise use viewer credentials with least privilege.
-5. Set currency to CNY and energy to kWh in field formatting.
+1. Mở Looker Studio và chọn **Create > Report**.
+2. Chọn connector **BigQuery**.
+3. Chọn project, dataset `ev_charging_mart` và một bảng MART.
+4. Dùng Owner's credentials chỉ khi được phê duyệt; nếu không, dùng viewer credentials với quyền tối thiểu.
+5. Định dạng tiền tệ là CNY và năng lượng là kWh.
 
-Create separate data sources for:
+Tạo data source riêng cho:
 
 - `mart_executive_kpi`
 - `mart_hourly_demand`
 - `mart_station_utilization`
 - `mart_spatial_grid_summary`
 
-Do not connect the dashboard to RAW or CORE transaction facts for normal charts.
+Không kết nối biểu đồ thông thường tới RAW hoặc CORE fact table.
 
-## Pages
+## Các trang đề xuất
 
-### Executive overview
+### Tổng quan điều hành
 
-Use scorecards for total transactions, total energy, total fees, average duration, active stations, and average energy/session. Use `source_month` as a comparison filter. Add a monthly KPI table and a fee composition chart from a blended or calculated source.
+Dùng scorecard cho số giao dịch, năng lượng, tổng phí, thời lượng trung bình, số trạm hoạt động và năng lượng trung bình mỗi phiên. Dùng `source_month` để so sánh tháng; biểu đồ cơ cấu phí lấy từ các trường phí đã định nghĩa.
 
-### Charging demand
+### Nhu cầu sạc
 
-Use `mart_hourly_demand` for transactions and energy by hour. Add `source_month`, `time_period`, and `tou_category` controls. Use the percentage field only with its documented denominator.
+Dùng `mart_hourly_demand` để xem giao dịch và năng lượng theo giờ. Thêm bộ lọc `source_month`, `time_period` và `tou_category`. Chỉ dùng phần trăm theo đúng mẫu số được ghi trong data dictionary.
 
-### Infrastructure
+### Hạ tầng
 
-Use `mart_station_utilization` for station type, installed power, charging guns, and station demand. Use `mart_spatial_grid_summary` for anonymized grid heatmaps; label grid fields as anonymized grid components, not latitude/longitude.
+Dùng `mart_station_utilization` cho loại trạm, công suất lắp đặt, số súng và nhu cầu. Dùng `mart_spatial_grid_summary` cho heatmap lưới đã ẩn danh; không gắn grid với latitude/longitude.
 
-### Cost and operations
+### Chi phí và vận hành
 
-Use total fee and average fee per session from the executive/station marts. Treat idle duration and active charge duration as estimates, not measured telemetry.
+Dùng tổng phí và phí trung bình mỗi phiên từ các MART. Idle duration và active charge duration là số ước tính, không phải telemetry đo trực tiếp.
 
-## Reproducibility
+## Kiểm thử trước khi publish
 
-Record the report URL, data-source project/dataset/table IDs, extract refresh settings, and calculated fields in the dashboard specification. Refresh after each MART rebuild. Avoid extract caching for rapidly changing production data; for this static portfolio dataset, a scheduled extract is acceptable.
+- Tổng giao dịch và năng lượng khớp với BigQuery.
+- Đơn vị CNY và kWh hiển thị rõ.
+- So sánh tháng dùng cùng định nghĩa metric.
+- Không có giá trị grid nào bị hiển thị như tọa độ.
+- Ghi URL report, project/dataset/table IDs, refresh settings và calculated fields vào [dashboards/dashboard_specification.md](../dashboards/dashboard_specification.md).
