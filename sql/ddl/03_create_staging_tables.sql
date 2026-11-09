@@ -2,7 +2,7 @@
 -- EV Charging Intelligence Platform - Staging Layer Table Definitions
 -- Description: Creates staging tables with cleaned, standardized, and validated
 --              data ready for dimensional modeling
--- Idempotent: Yes (CREATE OR REPLACE TABLE)
+-- Idempotent: Yes (CREATE TABLE IF NOT EXISTS). Transformation is separate.
 -- ==============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -10,7 +10,7 @@
 -- Transformations: Chinese-to-English site type mapping, geocoding parsing,
 --                  residential synonym consolidation, validation
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_staging.stg_stations (
+CREATE TABLE IF NOT EXISTS ev_charging_staging.stg_stations (
   -- Station identity
   station_id                  STRING    NOT NULL OPTIONS (description = 'Unique station identifier (primary key)'),
   geocoding                   STRING    OPTIONS (description = 'Original grid location code from source'),
@@ -50,7 +50,7 @@ OPTIONS (
 -- Transformations: UNION ALL both months, dedup, type casting, nullable preservation,
 --                  validation flags, zero-consumption flagging
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_staging.stg_orders (
+CREATE TABLE IF NOT EXISTS ev_charging_staging.stg_orders (
   -- Transaction identity
   transaction_date            DATE      NOT NULL OPTIONS (description = 'Native source transaction date'),
   source_month                STRING    NOT NULL OPTIONS (description = 'Source month: "2025-01" or "2025-07"'),
@@ -96,7 +96,7 @@ OPTIONS (
 -- stg_rejected_records: Records that failed validation checks
 -- Used for DQ monitoring and root cause analysis
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_staging.stg_rejected_records (
+CREATE TABLE IF NOT EXISTS ev_charging_staging.stg_rejected_records (
   -- Record identity
   transaction_date            DATE      OPTIONS (description = 'Transaction date of the rejected record'),
   source_month                STRING    OPTIONS (description = 'Source month: "2025-01" or "2025-07"'),

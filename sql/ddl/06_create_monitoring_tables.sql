@@ -2,7 +2,7 @@
 -- EV Charging Intelligence Platform - Monitoring Layer Table Definitions
 -- Description: Creates tables for data quality tracking and pipeline
 --              execution audit logging
--- Idempotent: Yes (CREATE OR REPLACE TABLE)
+-- Idempotent: Yes (CREATE TABLE IF NOT EXISTS). Check runs append results.
 -- ==============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -10,7 +10,7 @@
 -- Grain: One row per check execution
 -- Purpose: Detailed DQ check outcomes for investigation and trending
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_monitoring.dq_results (
+CREATE TABLE IF NOT EXISTS ev_charging_monitoring.dq_results (
   -- Check identity
   check_id                  STRING    NOT NULL OPTIONS (description = 'Unique check execution ID (UUID or composite key)'),
   run_id                    STRING    NOT NULL OPTIONS (description = 'Pipeline run ID grouping related checks'),
@@ -40,7 +40,7 @@ OPTIONS (
 -- Grain: One row per pipeline run
 -- Purpose: Quick pass/fail dashboard for pipeline health
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_monitoring.dq_summary (
+CREATE TABLE IF NOT EXISTS ev_charging_monitoring.dq_summary (
   -- Run identity
   run_id                    STRING    NOT NULL OPTIONS (description = 'Pipeline run ID'),
 
@@ -64,7 +64,7 @@ OPTIONS (
 -- Grain: One row per pipeline step execution
 -- Purpose: End-to-end pipeline observability and debugging
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_monitoring.pipeline_audit (
+CREATE TABLE IF NOT EXISTS ev_charging_monitoring.pipeline_audit (
   -- Step identity
   audit_id                  STRING    NOT NULL OPTIONS (description = 'Unique audit record ID'),
   run_id                    STRING    NOT NULL OPTIONS (description = 'Pipeline run ID for grouping related steps'),

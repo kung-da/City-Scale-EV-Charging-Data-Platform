@@ -72,7 +72,7 @@ Chạy tại thư mục gốc repository:
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Nếu PowerShell chặn activate script:
@@ -109,10 +109,10 @@ gcloud auth application-default login
 gcloud config set project YOUR_PROJECT_ID
 ```
 
-Tạo bucket ở cùng location với BigQuery:
+Tạo bucket ở cùng location với BigQuery. Project này dùng `us-central1` để phù hợp với mục tiêu Free Tier:
 
 ```powershell
-gsutil mb -p YOUR_PROJECT_ID -l US gs://YOUR_UNIQUE_BUCKET
+gsutil mb -p YOUR_PROJECT_ID -l us-central1 gs://YOUR_UNIQUE_BUCKET
 ```
 
 Copy file mẫu và thiết lập biến trong PowerShell. File `.env` chỉ để tham khảo cấu hình; code hiện tại đọc biến môi trường của process, không tự load `.env`.
@@ -120,7 +120,7 @@ Copy file mẫu và thiết lập biến trong PowerShell. File `.env` chỉ đ�
 ```powershell
 Copy-Item .env.example .env
 $env:EV_PROJECT_ID = "YOUR_PROJECT_ID"
-$env:EV_BQ_LOCATION = "US"
+$env:EV_BQ_LOCATION = "us-central1"
 $env:EV_GCS_BUCKET = "YOUR_UNIQUE_BUCKET"
 $env:EV_DATA_DIR = "data/raw"
 ```
@@ -150,20 +150,20 @@ gsutil ls gs://$env:EV_GCS_BUCKET/raw/
 
 ## 7. Tạo BigQuery datasets và table contracts
 
-Các file DDL dùng location `US`. Nếu dùng region khác, sửa tất cả giá trị `location = 'US'` trong [sql/ddl/01_create_datasets.sql](sql/ddl/01_create_datasets.sql) trước khi chạy.
+Các file DDL dùng location `us-central1`. BigQuery datasets và GCS bucket phải cùng location.
 
 Chạy theo đúng thứ tự:
 
 ```powershell
-Get-Content sql\ddl\01_create_datasets.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\ddl\02_create_raw_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\ddl\03_create_staging_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\ddl\04_create_core_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\ddl\05_create_mart_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\ddl\06_create_monitoring_tables.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\01_create_datasets.sql
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\02_create_raw_tables.sql
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\03_create_staging_tables.sql
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\04_create_core_tables.sql
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\05_create_mart_tables.sql
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\06_create_monitoring_tables.sql
 ```
 
-> **Cảnh báo:** các file DDL dùng `CREATE OR REPLACE TABLE`. Chỉ chạy lại khi chấp nhận ghi đè các bảng tương ứng.
+Các DDL dùng `CREATE TABLE IF NOT EXISTS` nên chạy lại không xóa dữ liệu. Các script transformation dùng `CREATE OR REPLACE TABLE` có chủ đích để rebuild kết quả; chỉ chạy khi cần refresh.
 
 ## 8. Nạp RAW có lineage
 
@@ -250,13 +250,13 @@ Expected counts là 8.553, 2.137.234 và 6.407.461.
 Chạy lần lượt RAW → STAGING → CORE → MART → MONITORING:
 
 ```powershell
-Get-Content sql\staging\01_build_staging.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\core\01_build_core.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\marts\01_build_marts.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
-Get-Content sql\monitoring\01_run_dq_checks.sql | bq query --use_legacy_sql=false --location=$env:EV_BQ_LOCATION
+.\scripts\run_bq.ps1 -SqlFile sql\staging\01_build_staging.sql
+.\scripts\run_bq.ps1 -SqlFile sql\core\01_build_core.sql
+.\scripts\run_bq.ps1 -SqlFile sql\marts\01_build_marts.sql
+.\scripts\run_bq.ps1 -SqlFile sql\monitoring\01_run_dq_checks.sql
 ```
 
-Các script SQL hiện dùng trực tiếp tên dataset `ev_charging_*` và không dùng biến project trong câu lệnh. Vì vậy hãy chạy `gcloud config set project YOUR_PROJECT_ID` trước, hoặc thêm project qualifier vào SQL nếu muốn chạy trong project khác.
+`scripts/run_bq.ps1` đặt location và `--maximum_bytes_billed=500GB` cho mỗi query. Đây là giới hạn từng job, không phải giới hạn tổng usage theo tháng.
 
 ## 10. Kiểm tra sau pipeline
 
@@ -294,7 +294,24 @@ SELECT COUNT(*) FROM `YOUR_PROJECT_ID.ev_charging_mart.mart_station_utilization`
 SELECT COUNT(*) FROM `YOUR_PROJECT_ID.ev_charging_mart.mart_spatial_grid_summary`;
 ```
 
-## 11. Kiểm soát chi phí BigQuery
+## 11. Kiểm soát Free Tier và chi phí
+
+Các ngưỡng tham khảo cần theo dõi theo tháng là:
+
+| Dịch vụ | Ngưỡng tham khảo | Cách kiểm tra |
+|---|---:|---|
+| BigQuery storage | 10 GiB | `sql/monitoring/02_free_tier_usage.sql` |
+| BigQuery query processing | 1 TiB | `sql/monitoring/02_free_tier_usage.sql` |
+| Cloud Storage | 5 GB-tháng Regional Standard tại `us-central1` | `gcloud storage du -s gs://BUCKET` |
+
+BigQuery Sandbox có thể dùng BigQuery mà không cần thẻ nhưng có giới hạn vòng đời bảng; project này dùng GCS nên có thể vẫn cần billing account. Các ngưỡng Free Tier và điều kiện áp dụng có thể thay đổi. Không coi các con số trên là cam kết `$0`; Billing Reports của project là nguồn xác nhận cuối cùng.
+
+Chạy báo cáo usage:
+
+```powershell
+.\scripts\run_bq.ps1 -SqlFile sql\monitoring\02_free_tier_usage.sql -MaximumBytesBilled 10GB
+gcloud storage du -s gs://$env:EV_GCS_BUCKET
+```
 
 Luôn dry run trước truy vấn lớn:
 
@@ -307,7 +324,10 @@ Nguyên tắc:
 
 - Luôn lọc `transaction_date` khi đọc bảng partitioned.
 - Không dùng `SELECT *` trong truy vấn production.
+- Dùng `scripts/run_bq.ps1` thay vì gọi `bq query` trực tiếp để có `--maximum_bytes_billed`.
+- Chỉ rebuild STAGING/CORE/MART khi RAW đã thay đổi.
 - Kết nối Looker Studio với MART, không kết nối trực tiếp fact table.
+- Tạo Billing budget alert ở mức `$1`, `$5` và `$10`. Budget alert chỉ cảnh báo, không tự dừng chi phí.
 - Xóa bảng tạm `_load_*` sau khi xác nhận RAW:
 
 ```powershell
@@ -315,6 +335,22 @@ bq rm -f -t "${project}:ev_charging_raw._load_stations"
 bq rm -f -t "${project}:ev_charging_raw._load_orders_2025_01"
 bq rm -f -t "${project}:ev_charging_raw._load_orders_2025_07"
 ```
+
+### Dọn tài nguyên sau khi thử nghiệm
+
+Các lệnh dưới đây là destructive; kiểm tra project và bucket trước khi chạy:
+
+```powershell
+$project = $env:EV_PROJECT_ID
+bq rm -r -f -d "${project}:ev_charging_monitoring"
+bq rm -r -f -d "${project}:ev_charging_mart"
+bq rm -r -f -d "${project}:ev_charging_core"
+bq rm -r -f -d "${project}:ev_charging_staging"
+bq rm -r -f -d "${project}:ev_charging_raw"
+gcloud storage rm --recursive "gs://$env:EV_GCS_BUCKET"
+```
+
+Sau khi dọn, kiểm tra Billing → Reports và Billing → Cost table.
 
 ## 12. Kết nối Looker Studio
 
@@ -341,6 +377,7 @@ sql/staging/            Chuẩn hóa và gắn cờ dữ liệu
 sql/core/               Xây dựng star schema
 sql/marts/              Xây dựng bảng phục vụ dashboard
 sql/monitoring/         Chạy data quality checks
+scripts/run_bq.ps1      Chạy query với location và maximum bytes billed
 tests/                  Unit và integration tests
 ```
 

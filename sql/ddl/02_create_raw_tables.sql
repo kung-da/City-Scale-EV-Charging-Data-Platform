@@ -2,7 +2,7 @@
 -- EV Charging Intelligence Platform - Raw Layer Table Definitions
 -- Description: Creates raw tables matching source parquet schemas exactly,
 --              plus audit columns for lineage tracking
--- Idempotent: Yes (CREATE OR REPLACE TABLE)
+-- Idempotent: Yes (CREATE TABLE IF NOT EXISTS). Loading is a separate step.
 -- ==============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -10,7 +10,7 @@
 -- Source columns: geocoding, station_id (PK), construction_site (17 Chinese
 --                 categories), power/pile/gun counts
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_raw.raw_stations (
+CREATE TABLE IF NOT EXISTS ev_charging_raw.raw_stations (
   -- Source columns (match parquet schema exactly)
   geocoding                 STRING    OPTIONS (description = 'Anonymized grid code from source (for example, "9891_4446"; not longitude/latitude)'),
   station_id                STRING    NOT NULL OPTIONS (description = 'Unique station identifier (primary key in source)'),
@@ -36,7 +36,7 @@ OPTIONS (
 -- Known issues: 1,179 nulls in equipment_classification/rated_gun_power_kw,
 --               34,551 zero-energy records, 1 duplicate row
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_raw.raw_orders_2025_01 (
+CREATE TABLE IF NOT EXISTS ev_charging_raw.raw_orders_2025_01 (
   -- Source columns (match parquet schema exactly)
   transaction_date          DATE      OPTIONS (description = 'Transaction date stored as native Parquet date32 value'),
   equipment_classification  STRING    OPTIONS (description = 'Equipment type: 直流设备 (DC) or 交流设备 (AC). 1,179 nulls in Jan.'),
@@ -56,6 +56,7 @@ CREATE OR REPLACE TABLE ev_charging_raw.raw_orders_2025_01 (
   _source_file              STRING    NOT NULL OPTIONS (description = 'Source file name'),
   _source_month             STRING    NOT NULL OPTIONS (description = 'Source month identifier (e.g., "2025-01")')
 )
+PARTITION BY transaction_date
 OPTIONS (
   description = 'Raw landing table for January 2025 charging orders. 2,137,234 rows with known data quality issues: 1,179 null classifications, 34,551 zero-energy records, 1 duplicate.'
 );
@@ -65,7 +66,7 @@ OPTIONS (
 -- Known issues: 3,406 full-row duplicates, 792 zero-energy records, and
 -- some session timestamps outside the transaction-date month.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_raw.raw_orders_2025_07 (
+CREATE TABLE IF NOT EXISTS ev_charging_raw.raw_orders_2025_07 (
   -- Source columns (match parquet schema exactly)
   transaction_date          DATE      OPTIONS (description = 'Transaction date stored as native Parquet date32 value'),
   equipment_classification  STRING    OPTIONS (description = 'Equipment type: 直流设备 (DC) or 交流设备 (AC)'),
@@ -85,6 +86,7 @@ CREATE OR REPLACE TABLE ev_charging_raw.raw_orders_2025_07 (
   _source_file              STRING    NOT NULL OPTIONS (description = 'Source file name'),
   _source_month             STRING    NOT NULL OPTIONS (description = 'Source month identifier (e.g., "2025-07")')
 )
+PARTITION BY transaction_date
 OPTIONS (
   description = 'Raw landing table for July 2025 charging orders. 6,407,461 rows with known data quality issues: 3,406 duplicates, 792 zero-energy records, and timestamp/date boundary cases.'
 );

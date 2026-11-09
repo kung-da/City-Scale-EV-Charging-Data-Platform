@@ -10,7 +10,7 @@
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS ev_charging_raw
 OPTIONS (
-  location = 'US',
+  location = 'us-central1',
   description = 'Raw landing zone for EV charging source data. Contains unmodified source records with audit metadata columns (_ingested_at, _source_file).'
 );
 
@@ -20,7 +20,7 @@ OPTIONS (
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS ev_charging_staging
 OPTIONS (
-  location = 'US',
+  location = 'us-central1',
   description = 'Staging layer with cleaned, deduplicated, and standardized EV charging data. Includes validation flags, English translations, and rejected records.'
 );
 
@@ -30,7 +30,7 @@ OPTIONS (
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS ev_charging_core
 OPTIONS (
-  location = 'US',
+  location = 'us-central1',
   description = 'Core dimensional model (star schema) with dimension tables (station, date, time) and the fact_charging_transaction table for analytical workloads.'
 );
 
@@ -40,7 +40,7 @@ OPTIONS (
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS ev_charging_mart
 OPTIONS (
-  location = 'US',
+  location = 'us-central1',
   description = 'Business-facing mart layer with pre-aggregated tables for executive KPIs, hourly demand patterns, station utilization, spatial analysis, and cost breakdowns.'
 );
 
@@ -50,6 +50,6 @@ OPTIONS (
 -- -----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS ev_charging_monitoring
 OPTIONS (
-  location = 'US',
+  location = 'us-central1',
   description = 'Data quality monitoring and pipeline observability. Stores DQ check results, summary scores, and pipeline execution audit logs.'
 );

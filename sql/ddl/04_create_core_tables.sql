@@ -2,7 +2,7 @@
 -- EV Charging Intelligence Platform - Core Layer Table Definitions (Star Schema)
 -- Description: Creates dimensional model with dimension and fact tables
 --              for analytical workloads
--- Idempotent: Yes (CREATE OR REPLACE TABLE)
+-- Idempotent: Yes (CREATE TABLE IF NOT EXISTS). Transformation is separate.
 -- ==============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -10,7 +10,7 @@
 -- Grain: One row per unique station
 -- Source: ev_charging_staging.stg_stations
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_core.dim_station (
+CREATE TABLE IF NOT EXISTS ev_charging_core.dim_station (
   -- Surrogate key
   station_key               INT64     NOT NULL OPTIONS (description = 'Surrogate key generated via FARM_FINGERPRINT(station_id)'),
 
@@ -47,7 +47,7 @@ OPTIONS (
 -- Grain: One row per calendar date
 -- Range: 2025-01-01 to 2025-07-31, with session timestamps checked separately
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_core.dim_date (
+CREATE TABLE IF NOT EXISTS ev_charging_core.dim_date (
   -- Keys
   date_key                  INT64     NOT NULL OPTIONS (description = 'Date surrogate key in YYYYMMDD format (e.g., 20250101)'),
   full_date                 DATE      NOT NULL OPTIONS (description = 'Calendar date'),
@@ -75,7 +75,7 @@ OPTIONS (
 -- Grain: One row per minute of the day (1,440 rows)
 -- Includes time periods and Time-of-Use (TOU) pricing categories
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_core.dim_time (
+CREATE TABLE IF NOT EXISTS ev_charging_core.dim_time (
   -- Key
   time_key                  INT64     NOT NULL OPTIONS (description = 'Time surrogate key in HHMM format (e.g., 0830 = 8:30 AM, 1415 = 2:15 PM)'),
 
@@ -99,7 +99,7 @@ OPTIONS (
 -- Source: ev_charging_staging.stg_orders (is_valid = TRUE only)
 -- Partitioned by transaction_date, clustered by station_id and equipment type
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_core.fact_charging_transaction (
+CREATE TABLE IF NOT EXISTS ev_charging_core.fact_charging_transaction (
   -- Technical key (no source transaction ID is provided)
   transaction_key             INT64     NOT NULL OPTIONS (description = 'Deterministic technical key derived from source_month and source_row_hash; not a source business ID'),
 

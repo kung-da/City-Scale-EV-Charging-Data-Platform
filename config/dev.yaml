@@ -1,5 +1,5 @@
 project_id: ${EV_PROJECT_ID}
-location: ${EV_BQ_LOCATION:US}
+location: ${EV_BQ_LOCATION:us-central1}
 gcs_bucket: ${EV_GCS_BUCKET}
 data_dir: ${EV_DATA_DIR:data/raw}
 source_item_url: ${EV_SOURCE_ITEM_URL}

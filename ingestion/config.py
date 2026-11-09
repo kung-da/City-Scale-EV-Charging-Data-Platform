@@ -17,7 +17,7 @@ class Settings:
 def load_settings() -> Settings:
     return Settings(
         project_id=os.getenv("EV_PROJECT_ID"),
-        location=os.getenv("EV_BQ_LOCATION", "US"),
+        location=os.getenv("EV_BQ_LOCATION", "us-central1"),
         gcs_bucket=os.getenv("EV_GCS_BUCKET"),
         data_dir=Path(os.getenv("EV_DATA_DIR", "data/raw")),
         source_item_url=os.getenv(

@@ -11,10 +11,10 @@ Trong production, dùng service account với quyền giới hạn. Không commi
 
 ## 2. Tạo dataset
 
-Mặc định SQL dùng location `US`. Nếu bucket ở region khác, sửa `location` trong [sql/ddl/01_create_datasets.sql](../sql/ddl/01_create_datasets.sql) trước khi chạy:
+Project dùng location `us-central1` cho cả BigQuery datasets và GCS bucket. Nếu đổi region, phải đổi đồng nhất trong `.env`, `config/dev.yaml`, DDL và lệnh chạy:
 
 ```powershell
-Get-Content sql\ddl\01_create_datasets.sql | bq query --use_legacy_sql=false
+.\scripts\run_bq.ps1 -SqlFile sql\ddl\01_create_datasets.sql
 ```
 
 Chạy tiếp DDL `02` đến `06` theo thứ tự. DDL định nghĩa contract ổn định; các script transformation mới tạo dữ liệu.
@@ -33,7 +33,7 @@ Không nạp Parquet trực tiếp bằng autodetect vào bảng RAW rồi bỏ 
 - `_source_file`: tên file nguồn;
 - `_source_month`: tháng nguồn đối với orders.
 
-Helper `ingestion.load_bigquery.load_parquet` hiện là helper load Parquet tối thiểu với autodetect; nó không tự bổ sung đủ lineage columns của contract RAW. Khi triển khai, hãy load vào bảng tạm rồi `INSERT ... SELECT` sang bảng RAW với metadata, hoặc dùng một job nạp có bước metadata tương đương. Đây là bước cần hoàn thiện trước khi tự động hóa production.
+Helper `ingestion.load_bigquery.load_parquet` hiện là helper load Parquet tối thiểu với autodetect và mặc định không ghi đè bảng đích (`WRITE_EMPTY`). Nó không tự bổ sung đủ lineage columns của contract RAW. Khi triển khai, hãy load vào bảng tạm rồi `INSERT ... SELECT` sang bảng RAW với metadata, hoặc dùng một job nạp có bước metadata tương đương. Chỉ truyền `overwrite=True` cho bảng tạm khi đã kiểm soát việc chạy lại.
 
 Sau khi nạp, kiểm tra:
 
@@ -46,10 +46,10 @@ GROUP BY _source_file;
 ## 4. Chạy ELT
 
 ```powershell
-Get-Content sql\staging\01_build_staging.sql | bq query --use_legacy_sql=false
-Get-Content sql\core\01_build_core.sql | bq query --use_legacy_sql=false
-Get-Content sql\marts\01_build_marts.sql | bq query --use_legacy_sql=false
-Get-Content sql\monitoring\01_run_dq_checks.sql | bq query --use_legacy_sql=false
+.\scripts\run_bq.ps1 -SqlFile sql\staging\01_build_staging.sql
+.\scripts\run_bq.ps1 -SqlFile sql\core\01_build_core.sql
+.\scripts\run_bq.ps1 -SqlFile sql\marts\01_build_marts.sql
+.\scripts\run_bq.ps1 -SqlFile sql\monitoring\01_run_dq_checks.sql
 ```
 
 Thứ tự bắt buộc là RAW → STAGING → CORE → MART → MONITORING. Không chạy dashboard trước khi MONITORING hoàn tất.
@@ -69,10 +69,21 @@ ORDER BY run_timestamp DESC;
 
 Đối chiếu số dòng nguồn theo tháng, kiểm tra foreign key station và xác nhận `overall_status` trước khi publish dashboard.
 
-## 6. Ước tính chi phí
+## 6. Theo dõi Free Tier và chi phí
+
+Chạy báo cáo storage/query usage ở cùng location:
+
+```powershell
+.\scripts\run_bq.ps1 -SqlFile sql\monitoring\02_free_tier_usage.sql -MaximumBytesBilled 10GB
+gcloud storage du -s gs://$env:EV_GCS_BUCKET
+```
+
+Theo dõi tham khảo: 10 GiB BigQuery storage, 1 TiB BigQuery query processing và 5 GB-tháng Regional Standard Cloud Storage tại `us-central1`. BigQuery Sandbox có thể không cần billing account nhưng có giới hạn vòng đời; dùng GCS có thể vẫn yêu cầu billing. Đây không phải cam kết `$0`; xác nhận bằng Billing Reports và điều kiện tài khoản thực tế.
+
+## 7. Ước tính chi phí
 
 ```powershell
 bq query --use_legacy_sql=false --dry_run --format=prettyjson "SELECT COUNT(*) FROM \`YOUR_PROJECT.ev_charging_core.fact_charging_transaction\` WHERE transaction_date BETWEEN '2025-01-01' AND '2025-01-31'"
 ```
 
-Luôn lọc `transaction_date` khi đọc bảng partitioned. Tránh `SELECT *`, xem bytes processed trong dry run và để Looker Studio đọc MART thay vì fact table.
+Luôn lọc `transaction_date` khi đọc bảng partitioned. Tránh `SELECT *`, xem bytes processed trong dry run và để Looker Studio đọc MART thay vì fact table. `scripts/run_bq.ps1` áp dụng `--maximum_bytes_billed=500GB` cho mỗi job; giới hạn này không thay thế monthly budget alert.

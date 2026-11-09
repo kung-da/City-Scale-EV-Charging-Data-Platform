@@ -2,7 +2,7 @@
 -- EV Charging Intelligence Platform - Mart Layer Table Definitions
 -- Description: Pre-aggregated business-facing tables optimized for dashboards
 --              and executive reporting
--- Idempotent: Yes (CREATE OR REPLACE TABLE)
+-- Idempotent: Yes (CREATE TABLE IF NOT EXISTS). Transformation is separate.
 -- ==============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -10,7 +10,7 @@
 -- Grain: One row per month
 -- Purpose: High-level dashboard cards comparing Jan vs Jul performance
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_mart.mart_executive_kpi (
+CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_executive_kpi (
   -- Dimensions
   source_month                STRING    NOT NULL OPTIONS (description = 'Month identifier: "2025-01" or "2025-07"'),
   month_name                  STRING    NOT NULL OPTIONS (description = 'Human-readable month name (e.g., "January 2025")'),
@@ -47,7 +47,7 @@ OPTIONS (
 -- Grain: One row per hour per month
 -- Purpose: Time-of-day demand curves for capacity planning
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_mart.mart_hourly_demand (
+CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_hourly_demand (
   -- Dimensions
   source_month                STRING    NOT NULL OPTIONS (description = 'Month identifier'),
   hour_of_day                 INT64     NOT NULL OPTIONS (description = 'Hour of day (0-23)'),
@@ -74,7 +74,7 @@ OPTIONS (
 -- Grain: One row per station per month
 -- Purpose: Station-level performance and utilization analysis
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_mart.mart_station_utilization (
+CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_station_utilization (
   -- Dimensions
   station_id                  STRING    NOT NULL OPTIONS (description = 'Station identifier'),
   source_month                STRING    NOT NULL OPTIONS (description = 'Month identifier'),
@@ -118,7 +118,7 @@ OPTIONS (
 -- Grain: One row per grid cell (grid_x, grid_y) per month
 -- Purpose: Spatial analysis and heatmap visualization
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_mart.mart_spatial_grid_summary (
+CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_spatial_grid_summary (
   -- Dimensions
   grid_x                      INT64     NOT NULL OPTIONS (description = 'Anonymized grid component; not longitude'),
   grid_y                      INT64     NOT NULL OPTIONS (description = 'Anonymized grid component; not latitude'),
@@ -151,7 +151,7 @@ OPTIONS (
 -- Grain: One row per construction site type per equipment class per month
 -- Purpose: Pricing and revenue analysis across segments
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE TABLE ev_charging_mart.mart_cost_analysis (
+CREATE TABLE IF NOT EXISTS ev_charging_mart.mart_cost_analysis (
   -- Dimensions
   construction_site_en        STRING    NOT NULL OPTIONS (description = 'English site type'),
   equipment_classification    STRING    NOT NULL OPTIONS (description = 'Equipment type: 直流设备 (DC) or 交流设备 (AC)'),
